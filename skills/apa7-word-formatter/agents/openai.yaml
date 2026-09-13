@@ -1,0 +1,3 @@
+interface:
+  display_name: "APA 7 论文格式助手"
+  short_description: "先选论文类型，AI 判断结构，Python 排版，只交付一个 Word 副本"
