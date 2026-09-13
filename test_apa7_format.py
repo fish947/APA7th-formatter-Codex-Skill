@@ -18,11 +18,12 @@ import zlib
 
 from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 from lxml import etree
 
 import apa7_format as apa
@@ -157,6 +158,18 @@ class FormatterRegressionTests(unittest.TestCase):
         self.assertEqual(page_fields(second), counts)
         self.assertEqual(c14n(Document(first)._element.body), c14n(Document(second)._element.body))
 
+    def test_second_run_recognizes_formatter_owned_heading_styles(self):
+        doc = Document()
+        doc.add_paragraph("Results", style="Heading 1")
+        doc.add_paragraph("The result remained stable.")
+        source = self.save(doc)
+        first, first_report = self.format(source, name="first.docx", add_styles=True)
+        second, second_report = self.format(first, name="second.docx")
+        self.assertEqual(first_report["paragraph_roles"], second_report["paragraph_roles"])
+        self.assertEqual(second_report["paragraph_roles"]["1"], "heading1")
+        self.assertEqual(Document(second).paragraphs[0].style.name, "APA7 Heading 1")
+        self.assertEqual(c14n(Document(first)._element.body), c14n(Document(second)._element.body))
+
     def test_unaccepted_body_revision_rejected_without_outputs(self):
         doc = Document()
         p = doc.add_paragraph("Original ")
@@ -280,6 +293,69 @@ class FormatterRegressionTests(unittest.TestCase):
         runs = {run.text: run for run in Document(out).paragraphs[0].runs}
         self.assertTrue(runs["p"].italic, "Formatting a run-in heading must preserve scientific italic in subsequent prose")
         self.assertTrue(runs["significant"].bold, "Formatting a run-in heading must preserve deliberate prose emphasis")
+
+    def test_reusable_styles_are_saved_without_changing_user_preserve_style(self):
+        doc = Document()
+        user_style = doc.styles.add_style("User Preserve", WD_STYLE_TYPE.PARAGRAPH)
+        user_style.font.name = "Courier New"
+        user_style.font.size = Pt(9)
+        doc.add_paragraph("Leave this paragraph style alone.", style=user_style)
+        doc.add_paragraph("A formatted body paragraph.")
+        source = self.save(doc)
+        out, report = self.format(source, config={"roles": {"1": "preserve", "2": "body"}}, add_styles=True)
+        after = Document(out)
+        self.assertEqual(after.paragraphs[0].style.name, "User Preserve")
+        self.assertEqual(after.styles["User Preserve"].font.name, "Courier New")
+        self.assertEqual(after.styles["User Preserve"].font.size, Pt(9))
+        self.assertEqual(after.paragraphs[1].style.name, "APA7 Body")
+        self.assertEqual(after.styles["APA7 Body"].paragraph_format.first_line_indent, Inches(0.5))
+        self.assertEqual(after.styles["APA7 Reference"].paragraph_format.first_line_indent, Inches(-0.5))
+        self.assertEqual(after.styles["APA7 Heading 1"].next_paragraph_style.name, "APA7 Body")
+        self.assertEqual(after.styles["APA7 Reference"].next_paragraph_style.name, "APA7 Reference")
+        self.assertEqual(next(x for x in report["machine_checks"] if x["id"] == "reusable_styles")["status"], "passed")
+
+    def test_reusable_styles_are_not_added_by_default(self):
+        doc = Document()
+        doc.add_paragraph("A final paper does not need extra Word styles.")
+        source = self.save(doc)
+        out, report = self.format(source)
+        names = {style.name for style in Document(out).styles}
+        self.assertNotIn("APA7 Body", names)
+        self.assertFalse(report["reusable_styles_added"])
+        self.assertFalse(any(item["id"] == "reusable_styles" for item in report["machine_checks"]))
+        self.assertFalse(any("继续写作" in item for item in report["feedback"]["changed"]))
+
+    def test_citation_reference_check_reports_only_and_never_rewrites(self):
+        doc = Document()
+        doc.add_paragraph("Prior work supports this claim (Smith, 2020), as does Jones (2021).")
+        doc.add_paragraph("References")
+        doc.add_paragraph("Smith, J. (2020). A matching source.")
+        doc.add_paragraph("Brown, R. (2019). An uncited source.")
+        source = self.save(doc)
+        original_text = [p.text for p in doc.paragraphs]
+        out, report = self.format(source)
+        check = report["citation_reference_check"]
+        self.assertEqual(check["status"], "needs_review")
+        self.assertEqual([(x["author"], x["year"]) for x in check["unmatched_citations"]], [("Jones", "2021")])
+        self.assertEqual([(x["author"], x["year"]) for x in check["uncited_references"]], [("Brown, R.", "2019")])
+        self.assertEqual([p.text for p in Document(out).paragraphs], original_text)
+        self.assertTrue(any("1 组正文作者—年份" in item for item in report["feedback"]["needs_review"]))
+        self.assertTrue(any(source["title"] == "Author-Date Citation System" for source in report["feedback"]["apa_sources"]))
+
+    def test_citation_reference_check_matches_common_forms_and_ignores_statistics(self):
+        doc = Document()
+        doc.add_paragraph("Smith and Jones (2020) agreed with a later result (Brown, 2019); the estimate was reported as (M = 3.2, 2020).")
+        doc.add_paragraph("References")
+        doc.add_paragraph("Brown, R. (2019). A source.")
+        doc.add_paragraph("Smith, J., & Jones, P. (2020). Another source.")
+        source = self.save(doc)
+        _, report = self.format(source)
+        check = report["citation_reference_check"]
+        self.assertEqual(check["status"], "passed")
+        self.assertEqual(check["citations_found"], 2)
+        self.assertEqual(check["reference_entries"], 2)
+        self.assertEqual(check["unmatched_citations"], [])
+        self.assertEqual(check["uncited_references"], [])
 
     def test_merged_and_nested_table_structure_and_format_are_preserved(self):
         doc = Document()

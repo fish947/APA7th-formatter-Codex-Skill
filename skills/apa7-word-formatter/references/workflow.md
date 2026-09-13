@@ -12,9 +12,9 @@ python3 scripts/apa7_workflow.py prepare "/path/paper.docx" --profile student --
 python3 scripts/apa7_format.py "/path/paper.docx" --inspect-visuals
 ```
 
-`prepare` is read-only for the Word file. It creates a fresh JSON draft and rejects an existing destination. `_review.paragraphs` contains 1-based direct-body paragraph IDs (including empty paragraphs); `_review.tables` contains 1-based top-level Word table IDs, cells and complexity flags; `_review.body_order` shows their interleaving and unsupported containers. Nested cell paragraphs do not use top-level paragraph IDs.
+`prepare` is read-only for the Word file. It creates a fresh JSON draft and rejects an existing destination. `_review.paragraphs` contains 1-based direct-body paragraph IDs (including empty paragraphs); `_review.tables` contains 1-based top-level Word table IDs, cells and complexity flags; `_review.body_order` shows their interleaving and unsupported containers. `_review.citation_reference_check` is an initial author-year hint based on inferred roles, not a semantic decision. Nested cell paragraphs do not use top-level paragraph IDs.
 
-The draft starts with empty classifications and `review_status: pending`. Do not mechanically copy every inferred role and mark it reviewed without reading the content. Read large drafts in chunks until every relevant object is accounted for.
+The draft starts with empty classifications, `review_status: pending`, and a pending `compliance_review`. Do not mechanically copy every inferred role or checklist item and mark it reviewed without reading the content. Read large drafts in chunks until every relevant object is accounted for.
 
 ## Configuration to fill
 
@@ -39,11 +39,23 @@ The following demonstrates the shape for a two-paragraph, one-table input, not u
       "1": {"confidence": "high", "reason": "Condition/Mean/SD header followed by numeric result rows; one header row."}
     }
   },
+  "compliance_review": {
+    "target_requirements": {"status": "pass", "reason": "The user selected the student-paper profile and supplied no conflicting institutional template."},
+    "title_page": {"status": "needs_review", "reason": "Existing title and author lines were identified, but the author must confirm that all course information required by the institution is present."},
+    "abstract_keywords": {"status": "not_applicable", "reason": "No abstract or keywords section is present in this assignment."},
+    "headings": {"status": "pass", "reason": "The identified Method subsection is consistent with the surrounding heading hierarchy."},
+    "citations_references": {"status": "needs_review", "reason": "Formatting can be applied, but citation-to-reference correspondence and bibliographic facts require author review."},
+    "tables": {"status": "pass", "reason": "One simple data table has a confirmed one-row header and a separate number/title above it."},
+    "figures": {"status": "not_applicable", "reason": "No drawings, pictures or native charts are present."},
+    "appendices": {"status": "not_applicable", "reason": "No appendix label or appendix section is present."}
+  },
   "unresolved": []
 }
 ```
 
 All paragraphs and top-level tables must have one valid role and one reason. Confidence is `high` or `uncertain`; the latter requires role `preserve`. Reasons should identify the actual contextual evidence, not just say “APA.” Unsupported complex tables must be preserved. For a table with no confidently identified header, preserve it rather than invent a header count.
+
+`compliance_review` must contain all eight keys shown above, each with a nonblank evidence-based reason. Allowed statuses are `pass`, `needs_review`, and `not_applicable`. Target requirements and title page are never treated as not applicable because the selected profile and required title-page information must always be considered. A present table, drawing/chart, or detected appendix also cannot be marked not applicable. This is a reasoning record: it prevents omitted review areas but does not prove that a judgment is correct.
 
 Supported paragraph roles are returned by `_review.allowed_roles`. `run_in_headings` maps a heading-4/5 paragraph ID to the exact prefix, e.g. `Response Accuracy.`; the original paragraph must already continue with prose. `title_page`, when supplied, must be two valid paragraph IDs and agree with the explicit paragraph roles. `replace_headers` defaults to false; only enable it when replacement of the existing content is within the user's request.
 
@@ -55,9 +67,9 @@ The input hash binds the whole source version. If the source is edited or re-sav
 python3 scripts/apa7_workflow.py apply "/path/paper.docx" --config "/path/new.structure.json" --profile student --output "/path/paper_APA7.docx"
 ```
 
-For professional mode, use `--profile professional --running-head "APPROVED SHORT TITLE"`. The configuration profile must match. Add `--export-visuals` only when visual export is requested. Font options are shown in the engine's `--help`.
+For professional mode, use `--profile professional --running-head "APPROVED SHORT TITLE"`. The configuration profile must match. Add `--export-visuals` only when visual export is requested. Add `--add-styles` only when the user wants to continue writing in the formatted copy. Font options are shown in the engine's `--help`.
 
-The apply command returns one output DOCX and a concise `feedback` object. It does not create audit files by default. Read its four sections—changes, APA sources, changed locations and remaining checks—plus any unresolved items in the reviewed configuration. The engine may preserve an unsupported component even when the classification is correct.
+The apply command returns one output DOCX and a concise `feedback` object. It does not create audit files by default. Before returning success, it reopens the saved DOCX and checks supported margins, paragraph alignment/indentation/spacing, font settings, simple table rules, header fields, and optional reusable styles. Core saved-format mismatches stop the run; header situations that need interpretation remain review items. With `--add-styles`, the output includes formatter-owned styles for continued writing without changing styles used by preserved content. It also performs a conservative author-year comparison between identified in-text citations and reference entries. Reported mismatches are hints only and must never trigger automatic bibliography edits. Read the four feedback sections—changes, APA sources, changed locations and remaining checks—plus any unresolved items in the reviewed configuration. The engine may preserve an unsupported component even when the classification is correct.
 
 For `.doc`, first create a `.docx` copy using a trusted conversion path and check conversion fidelity, then prepare that stable DOCX. The bare engine supports `--soffice` for conversion, but the reviewed workflow uses DOCX-bound IDs. Encrypted files, macro documents and unaccepted revisions are not supported; ask the author to resolve these on a copy rather than accepting revisions automatically.
 

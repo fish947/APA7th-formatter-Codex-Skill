@@ -47,6 +47,15 @@ class AIWorkflowTests(unittest.TestCase):
             "tables": {
                 "1": {"confidence": "high", "reason": "One header row labels condition and mean values."},
                 "2": {"confidence": "uncertain", "reason": "A name field, not clearly a research data table."}}}
+        config["compliance_review"] = {
+            "target_requirements": {"status": "pass", "reason": "No course or journal deviations were supplied for this synthetic fixture."},
+            "title_page": {"status": "needs_review", "reason": "The synthetic fixture has no title page."},
+            "abstract_keywords": {"status": "not_applicable", "reason": "This short fixture contains no abstract."},
+            "headings": {"status": "pass", "reason": "Method and Participants form a valid two-level hierarchy."},
+            "citations_references": {"status": "not_applicable", "reason": "The fixture contains no citations or references."},
+            "tables": {"status": "needs_review", "reason": "The second table may be a layout object rather than a data table."},
+            "figures": {"status": "not_applicable", "reason": "The fixture contains no figures."},
+            "appendices": {"status": "not_applicable", "reason": "The fixture contains no appendices."}}
         config["unresolved"] = ["Confirm the intended layout of the name table."]
         return config
 
@@ -54,8 +63,11 @@ class AIWorkflowTests(unittest.TestCase):
         config = workflow.prepare(self.source, "student")
         self.assertEqual(config["review_status"], "pending")
         self.assertEqual(config["roles"], {})
+        self.assertEqual({item["status"] for item in config["compliance_review"].values()}, {"pending"})
         self.assertEqual(config["_review"]["tables"][0]["cells"], [["Condition", "Mean"], ["A", "3"]])
         self.assertEqual([x["kind"] for x in config["_review"]["body_order"]], ["paragraph"] * 3 + ["table"] * 2)
+        self.assertEqual(config["_review"]["object_summary"]["top_level_tables"], 2)
+        self.assertEqual(config["_review"]["citation_reference_check"]["status"], "not_applicable")
         self.assertEqual(self.source.read_bytes(), self.before)
 
     def test_pending_and_missing_object_classifications_rejected(self):
@@ -81,9 +93,28 @@ class AIWorkflowTests(unittest.TestCase):
         out, report = workflow.apply_reviewed(self.source, self.reviewed(), profile="student", output=self.root / "output.docx")
         self.assertEqual(self.source.read_bytes(), self.before)
         self.assertEqual(etree.tostring(Document(out).tables[1]._tbl, method="c14n"), before_table)
-        self.assertEqual(report["ai_review"]["status"], "classification_record_validated")
+        self.assertEqual(report["ai_review"]["status"], "classification_and_compliance_record_validated")
         self.assertEqual(len(report["ai_review"]["unresolved"]), 1)
+        self.assertTrue(all(item["status"] == "passed" for item in report["machine_checks"] if item["id"] != "page_header"))
         self.assertTrue(any(e["location"] == "table2" and "保留此表格" in e["message"] for e in report["events"]))
+
+    def test_compliance_review_must_be_complete_and_match_present_objects(self):
+        config = self.reviewed()
+        del config["compliance_review"]["headings"]
+        with self.assertRaisesRegex(ValueError, "覆盖全部"):
+            workflow.validate_review(self.source, config, "student")
+        config = self.reviewed()
+        config["compliance_review"]["tables"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
+        with self.assertRaisesRegex(ValueError, "存在表格"):
+            workflow.validate_review(self.source, config, "student")
+        config = self.reviewed()
+        config["compliance_review"]["headings"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
+        with self.assertRaisesRegex(ValueError, "检测到标题层级"):
+            workflow.validate_review(self.source, config, "student")
+        config = self.reviewed()
+        config["compliance_review"]["title_page"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
+        with self.assertRaisesRegex(ValueError, "不能标为不适用"):
+            workflow.validate_review(self.source, config, "student")
 
     def test_explicit_header_count_and_matching_profile_required(self):
         config = self.reviewed()

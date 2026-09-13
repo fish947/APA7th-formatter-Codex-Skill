@@ -1,8 +1,12 @@
-# APA 7 Word Formatter｜APA 7 Word 格式助手
+# APA 7 Word Formatter
 
-> AI understands the manuscript. Python applies the formatting. The author keeps control.
+> AI understands the paper. Python formats it reliably. You receive one new Word document.
 
-[中文介绍](#中文介绍) · [English Introduction](#english-introduction) · [使用方法](#运行) · [APA 官方依据](#apa-官网依据)
+Version 0.7 · Student papers · Professional manuscripts · Tables · Figures · References · Optional Word styles
+
+[中文](#中文介绍) · [English](#english-introduction)
+
+---
 
 ## 中文介绍
 
@@ -10,253 +14,297 @@ APA 格式一直是论文写作中非常消耗时间和精力的一部分。即�
 
 普通的 Word 格式脚本只能机械地统一字体和行距，却无法理解一个段落究竟是论文标题、作者信息、一级标题、普通正文、块引用、参考文献，还是图表注释。完全让 AI 直接修改 Word，同样可能出现格式不稳定、误改原文、破坏公式或丢失 Zotero／EndNote 引用域等问题。
 
-**APA 7 Word Formatter** 因此采用 **AI Skill + Python** 的组合：AI 负责阅读上下文、判断论文结构和发现视觉问题；Python 负责按照已确认的结构执行可测试、可重复的格式修改，并检查文字、公式、域代码、图片和嵌入资源是否得到保留。它不是简单地套用一个模板，而是把“理解文档”和“稳定改格式”分成两个相互检查的步骤。
+APA 7 Word Formatter 因此采用 AI Skill + Python 的组合：AI 负责阅读上下文、判断论文结构和发现视觉问题；Python 负责按照已确认的结构执行可测试、可重复的格式修改，并检查文字、公式、域代码、图片和嵌入资源是否得到保留。它不是简单地套用一个模板，而是把“理解文档”和“稳定改格式”分成两个相互检查的步骤。
 
-开始前，用户必须选择 `student`（学生论文）或 `professional`（专业／投稿论文）。完成后默认只生成 **1 个新的 Word 格式副本**，不会覆盖原稿，也不会在论文旁边留下复杂的审计文件。反馈只包括：改了什么、APA 来源、改了原稿哪里，以及还要审核什么。
+开始前，用户必须选择 student（学生论文）或 professional（专业／投稿论文）。完成后默认只生成 1 个新的 Word 格式副本，不会覆盖原稿，也不会在论文旁边留下复杂的审计文件。反馈只包括：改了什么、APA 来源、改了原稿哪里，以及还要审核什么。
 
-Python 引擎本身不会上传论文，也不需要单独的 AI API Key；使用 Skill 时，承载 Skill 的 AI 仍需要读取论文内容，因此数据处理方式取决于实际使用的平台，不能把“本地执行 Python”理解为“整个 AI 流程完全离线”。
-
-## English Introduction
-
-APA formatting is one of the most repetitive and time-consuming parts of academic writing. Even after the research and writing are complete, authors may still spend hours correcting margins, fonts, double spacing, page numbers, heading levels, reference indentation, table borders, figure sizing, and caption placement. Student papers and professional manuscripts also follow different requirements, while universities and journals may add their own exceptions.
-
-Conventional Word-formatting scripts can apply styles, but they cannot reliably determine whether a paragraph is a paper title, author information, a section heading, body text, a block quotation, a reference entry, or a figure note. Letting an AI rewrite the document directly introduces a different risk: inconsistent formatting or accidental changes to text, equations, citation fields, links, and embedded objects.
-
-**APA 7 Word Formatter** combines an **AI Skill with a deterministic Python engine**. The AI reads the manuscript in context, interprets its document hierarchy, classifies paragraphs and tables, and reviews rendered pages. Python then applies the approved formatting rules, verifies preservation of document content and embedded resources, and produces a new Word file without overwriting the source.
-
-The project supports both `student` and `professional` paper profiles. It can format page layout, paragraph spacing, headers, title pages, APA heading levels, abstracts, block quotations, references, appendices, editable Word tables, figures, and captions. It can also inspect native Word charts and optionally export supported vector content or reconstruct simple charts as SVG without pretending that raster images are true vectors.
-
-By default, one run produces only **one formatted DOCX copy**. The user receives concise feedback explaining what changed, which official APA sources were used, where formatting was applied in the original manuscript, and which items still require human review. The tool is a formatting and review assistant, not an official APA compliance certificate.
-
-## 为什么使用 Skill + Python？
-
-根据 [OpenAI 的 Skill 文档](https://learn.chatgpt.com/docs/build-skills)，Skill 可以把操作说明、参考资料和可执行脚本组合成可重复使用的工作流程。本项目将任务拆成两部分：
-
-- **AI Skill**：理解语义、判断文档层级、识别表格和图片的作用、处理不确定情况，并逐页检查输出。
-- **Python 引擎**：修改 Word XML 和样式、执行固定规则、保护原文与嵌入资源，并拒绝覆盖原稿或使用过期结构配置。
-
-AI 不确定的对象会被标为 `preserve` 并保留原样，而不是为了追求“全自动”强行修改。
-
-## 文档层级解读
-
-这个项目不会把 Word 中所有加粗文字都当成标题，也不会把所有 Word 表格都当成数据表。Skill 会同时阅读段落内容、相邻上下文、Word 样式、分页位置、正文顺序、表格单元格和视觉对象，再建立类似下面的文档层级：
+### Skill 文件结构
 
 ```text
-Paper
-├── Title page
-│   ├── Paper title
-│   └── Author, affiliation, course or author-note information
-├── Abstract
-│   └── Keywords
-├── Main text
-│   ├── Level 1 heading
-│   │   ├── Level 2 heading
-│   │   │   ├── Level 3 heading
-│   │   │   └── Level 4/5 run-in heading + body text
-│   │   ├── Body paragraphs
-│   │   ├── Block quotations
-│   │   ├── Tables
-│   │   │   ├── Table number
-│   │   │   ├── Table title
-│   │   │   ├── Header rows and data cells
-│   │   │   └── Table note
-│   │   └── Figures
-│   │       ├── Figure number
-│   │       ├── Figure title
-│   │       ├── Image or native chart
-│   │       └── Figure note
-├── References
-│   └── Individual reference entries
-└── Appendices
-    ├── Appendix label and title
-    └── Appendix text, tables and figures
+skills/apa7-word-formatter/
+├── SKILL.md                     AI 的主要工作说明
+├── agents/
+│   └── openai.yaml              Skill 的显示名称和简介
+├── references/
+│   └── workflow.md              结构判断、执行和逐页检查流程
+├── scripts/
+│   ├── apa7_format.py           Word 排版与保存后核验
+│   ├── apa7_workflow.py         AI 审核记录和完整流程
+│   ├── apa7_visuals.py          图片、图表识别与可选矢量导出
+│   └── requirements.txt         Python 依赖
+└── build-manifest.json          版本号和脚本完整性信息
 ```
 
-层级判断会直接影响格式。例如，普通正文使用首行缩进，而摘要首段不缩进；参考文献使用悬挂缩进；一级标题与三级标题的对齐和斜体规则不同；四、五级标题必须和后续正文处于同一段；表格编号和标题位于表格上方，表格注释位于下方。
+### 这个 Skill 能做什么
 
-如果上下文不足以确定标题级别、标题页范围、表头行数或对象类型，Skill 会保留该对象，并在最终反馈的“还要审核”中说明，而不会静默猜测。
+使用时只需先确认 `student`（学生论文）或 `professional`（专业／投稿论文）。默认流程是：**AI 识别文档结构 → Python 执行排版 → 保存后重新核验 → 逐页检查 → 交付一个新 DOCX 和简短反馈**。
 
-## 使用 Skill
+#### 默认一键完成
 
-完整技能在 `skills/apa7-word-formatter/`，含 `SKILL.md`、执行脚本和操作参考。可以把这个文件夹复制到个人 Skill 目录：
+| 功能 | 自动处理的内容 |
+| --- | --- |
+| 原稿保护 | 不覆盖源文件；不改写论文内容；检查文字、超链接、域代码、Zotero／EndNote 引用、公式、图片、图表和嵌入资源是否保留 |
+| 页面设置 | 四边 1 英寸页边距、APA 允许的字体、双倍行距、段前段后间距和页码 |
+| 学生／专业模式 | 按所选模式处理标题页和页眉；专业模式使用作者提供的 running head |
+| 文档层级 | 根据上下文识别标题页、摘要、关键词、正文、一级至五级标题、块引用、参考文献、图表说明和附录 |
+| 正文与参考文献 | 设置对齐、首行缩进、块引用缩进、参考文献悬挂缩进和标题层级格式 |
+| 表格 | 对简单 Word 数据表应用 APA 风格横线并去除竖线；复杂、合并或嵌套表格会保留并提示复核 |
+| 图片与图表 | 识别位图、SVG／EMF／WMF、原生 Word 图表和 Word 表格；过宽图片等比例缩小，不拉伸、不伪造矢量图 |
+| 引文检查 | 提示可能缺少对应参考文献的作者—年份引文，以及可能未在正文出现的文献条目；不会自动改写文献内容 |
+| 成品核验 | 重新打开 DOCX，检查核心格式是否真正保存，并逐页查看分页、遮挡、溢出和图表位置 |
+| 简短反馈 | 只说明改了什么、APA 来源、改了原稿哪里，以及还需要作者确认什么 |
+
+#### AI 会判断，但不会擅自猜测
+
+| 判断内容 | 处理方式 |
+| --- | --- |
+| 段落是什么 | AI 结合文字、前后文、Word 样式、对象顺序和页面外观判断，而不是看到粗体就当成标题 |
+| 表格是否适合自动处理 | 简单数据表自动排版；复杂表格保留原状并提醒人工检查 |
+| 图表属于哪种对象 | 先识别格式和数据是否完整，再决定保留、缩放、提取或重绘 |
+| 不确定的内容 | 保留原文和对象，不强行修改，并写入“还需审核” |
+
+#### 可选的额外功能
+
+| 功能 | 什么时候使用 | 默认状态 |
+| --- | --- | --- |
+| 矢量图导出 | 需要单独取得原始 SVG／EMF／WMF，或把数据完整的简单柱形图、折线图、散点图重绘为 SVG | 关闭 |
+| 继续写作样式 | 排版后还要在成品里新增正文、标题、参考文献、图表说明或块引用时使用 | 关闭 |
+| 保存 HTML 反馈 | 需要把简短反馈另外保存成可打开的网页文件时使用 | 关闭 |
+| 只检查不修改 | 想先看文档结构、风险和可处理对象，不立即生成排版副本时使用 | 按需 |
+| 更换 APA 允许字体 | 学校、导师或期刊指定其他 APA 可接受字体时使用 | 按需 |
+
+“继续写作样式”不是最终排版必需功能。它只是给 Word 增加 `APA7 Body`、`APA7 Heading 1`、`APA7 Reference` 等可重复选择的样式，方便用户在已经排好的副本里继续新增内容。如果论文已经写完，这项功能没有必要开启，因此从 v0.7 起默认关闭，也不会让 Word 的样式列表变得杂乱。
+
+格式规则来自 APA 官方网站，包括 [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list) 和 [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date)。运行 `python3 apa7_format.py --sources` 可以查看项目保存的官方原文摘录和直接链接。
+
+### 如何使用
+
+#### 1. 安装项目
+
+需要 Python 3.10 或以上版本：
+
+```sh
+git clone https://github.com/weirdfishes_2120/apa7-word-formatter.git
+cd apa7-word-formatter
+python3 -m pip install -r requirements.txt
+```
+
+要在 Codex 中作为个人 Skill 使用，把 `skills/apa7-word-formatter` 文件夹复制到：
 
 ```text
 $HOME/.agents/skills/apa7-word-formatter/
 ```
 
-也可以只在当前项目中使用，把它放到项目根目录的：
+如果只想让当前项目使用，也可以放在项目根目录的 `.agents/skills/`。关于 Skill 的发现和调用方式，可参考 [OpenAI 官方 Build skills 文档](https://learn.chatgpt.com/docs/build-skills)。
 
-```text
-.agents/skills/apa7-word-formatter/
-```
+#### 2. 把 Word 文档放进工作区
 
-Codex 通常会自动发现新 Skill；如果没有显示，重新启动 Codex。也可以使用 `$skill-installer`，让它从这个 GitHub 仓库安装 `skills/apa7-word-formatter`。安装完成后，把 Word 文档放进工作区，然后输入：
+推荐使用 `.docx`。旧 `.doc` 文件应先在 Word 中另存为 `.docx`，并确认转换后没有丢失内容。
+
+#### 3. 直接告诉 AI 你的要求
+
+学生论文：
 
 > 使用 $apa7-word-formatter，把这份 Word 按 APA 7 学生论文格式处理，并检查所有页面。
 
-投稿论文请明确选择 professional，并提供 running head；要矢量导出时同时说明。Skill 会先让 Python 读取结构，由 AI 给每个段落及表格填写角色和依据，再通过 `apa7_workflow.py apply` 执行。未完成判断、配置与原稿不匹配、或不确定对象被要求强制改写时，执行入口会拒绝。
+专业／投稿论文：
 
-渲染使用当前环境的 documents 技能及其 `render_docx.py`。渲染结果和逐页复核记录会绑定输出 Word 的哈希；没有渲染条件时只能交付待复核状态，不能宣称已经完成视觉验收。
+> 使用 $apa7-word-formatter，把这份 Word 按 APA 7 专业论文格式处理。Running head 是 “SHORT PAPER TITLE”。
 
-`apa7_workflow.py` 不会自行调用大模型；运行 `prepare` 后，负责使用 Skill 的 AI 会完成分类并填写配置。单独运行 Python 并不等于自动启用了 AI。
+需要矢量导出：
 
-它可以重复执行已确定的排版规则；**目前不能把任意 Word 文档无条件转换成完全符合 APA 7 的成稿**。尤其是图片内文字、未标注的标题层级、文献条目的语义、图表首次提及顺序、作者信息以及最终分页，需要复核。运行成功也只表示支持范围内的格式处理成功。
+> 使用 $apa7-word-formatter 按 APA 7 学生论文格式处理，同时导出能够安全提取或重绘的矢量图。
 
-## 运行
+排版后还要继续写作：
 
-Python 3.10 或以上，先安装一次依赖：
+> 使用 $apa7-word-formatter 按 APA 7 学生论文格式处理，并加入方便继续写作的 APA7 Word 样式。
 
-```sh
-python3 -m pip install -r requirements.txt
-```
+如果没有说明论文类型，Skill 会先询问。之后它会分析结构、执行排版、重新检查成品并逐页查看。默认只交付一个新的 Word 副本。
 
-在本文件夹运行以下命令，会打开文件选择窗口。使用包含 Tk 的 Python 发行版才能显示窗口；没有 Tk 时使用下面的命令行方式。
+#### 4. 只运行 Python
+
+打开本地文件选择窗口：
 
 ```sh
 python3 apa7_format.py
 ```
 
-论文类型是必选项。学生论文：
+命令行处理学生论文：
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --profile student
+python3 apa7_format.py "/path/to/paper.docx" --profile student
 ```
 
-专业／投稿论文：
+命令行处理专业论文：
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --profile professional --running-head "A SHORT PAPER TITLE"
+python3 apa7_format.py "/path/to/paper.docx" --profile professional --running-head "SHORT PAPER TITLE"
 ```
 
-默认输出就在原文档旁边，使用带时间戳的新文件名：
-
-- `论文_APA7_时间.docx`：格式副本。
-
-命令行会直接显示一份简单反馈，只包含“改了什么、APA 来源、改了原稿哪里、还要审核”。如果确实需要另存这份反馈，可加 `--save-feedback`，生成一个 `.feedback.html`；默认不生成。
-
-运行时会检查原稿哈希、正文、域代码、原生公式、图片和嵌入资源的保留情况；这些检查不能替代逐页视觉检查。
-
-## 识别图片和导出矢量图
-
-文件选择窗口中可勾选“同时提取图片／原始矢量，并将支持的原生图表导出 SVG”。命令行对应：
+如需在成品中继续写作，可选加上：
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --profile student --export-visuals
+python3 apa7_format.py "/path/to/paper.docx" --profile student --add-styles
 ```
 
-只识别内容类型、不修改文档：
+单独运行 Python 可以执行固定排版和保护检查，但不会代替 AI 对标题层级、对象用途和页面外观的判断。
+
+### 使用边界
+
+- 学校、导师或期刊的明确要求优先于 APA 通用格式。
+- 工具不会编造作者信息、参考文献、研究数据或缺失内容。
+- 引文匹配、标题大小写、复杂表格、图片清晰度、版权和最终分页仍可能需要作者确认。
+- 这是 APA 7 格式与审核助手，不是 APA 官方认证工具。
+
+---
+
+## English Introduction
+
+APA 7 formatting often takes far more time than expected. A paper may contain a title page, several heading levels, an abstract, block quotations, references, tables, figures, native Word charts, and appendices. A conventional script can standardize fonts and spacing, but it cannot reliably understand what each paragraph or object means. Allowing an AI to edit a Word file freely creates a different risk: accidental changes to wording, equations, citation fields, or embedded content.
+
+**APA 7 Word Formatter** combines both approaches:
+
+- The **AI Skill** reads the manuscript in context, interprets its structure, classifies paragraphs and objects, and reviews the rendered pages.
+- The **Python engine** applies the approved formatting consistently, reopens the saved file to verify the result, and protects the source manuscript and its contents.
+
+Before formatting, the user chooses `student` or `professional`. By default, the formatter creates one new `.docx` copy and never overwrites the source. Its purpose is to remove repetitive formatting work while clearly identifying anything that still requires human judgment.
+
+### Skill Structure
+
+```text
+skills/apa7-word-formatter/
+├── SKILL.md                     Main instructions for the AI
+├── agents/
+│   └── openai.yaml              Display name and Skill metadata
+├── references/
+│   └── workflow.md              Classification, execution, and page-review workflow
+├── scripts/
+│   ├── apa7_format.py           Word formatting and post-save verification
+│   ├── apa7_workflow.py         AI review record and controlled workflow
+│   ├── apa7_visuals.py          Visual inspection and optional vector export
+│   └── requirements.txt         Python dependencies
+└── build-manifest.json          Version and script integrity information
+```
+
+`SKILL.md` explains how the AI should analyze a paper. `workflow.md` defines when formatting is safe and when an object must be preserved. The Python files in `scripts/` perform the actual Word edits. This separation prevents the AI from freely rewriting the document and prevents Python from blindly guessing its structure.
+
+### What the Skill Can Do
+
+The user first confirms `student` or `professional`. The default workflow is then: **AI reads the structure → Python applies the formatting → the saved file is reopened and verified → every page is reviewed → one new DOCX and concise feedback are returned**.
+
+#### Automatic by Default
+
+| Feature | What it does automatically |
+| --- | --- |
+| Source protection | Never overwrites the source; does not rewrite the paper; checks that text, links, fields, Zotero/EndNote citations, equations, visuals, charts, and embedded resources remain present |
+| Page setup | Applies 1-inch margins, an APA-supported font, double spacing, paragraph spacing, and page numbers |
+| Student/professional mode | Handles the title page and headers for the selected mode; professional mode uses the author's running head |
+| Document hierarchy | Uses context to identify the title page, abstract, keywords, body, Levels 1–5 headings, block quotations, references, captions, notes, and appendices |
+| Body and references | Applies alignment, first-line indents, block-quotation indents, hanging reference indents, and heading formatting |
+| Tables | Formats simple editable Word data tables with APA-style horizontal rules and no vertical rules; preserves complex, merged, or nested tables for review |
+| Figures and charts | Distinguishes raster images, SVG/EMF/WMF, native Word charts, and Word tables; proportionally scales oversized images without stretching or fake vector conversion |
+| Citation checks | Flags likely author–year citations without a matching reference and references without an obvious in-text citation; never edits bibliography content automatically |
+| Saved-result verification | Reopens the DOCX to confirm that core formatting was saved, then reviews each page for overflow, obstruction, pagination, and visual placement |
+| Concise feedback | Reports only what changed, the APA sources, the affected locations, and what still needs author review |
+
+#### AI-Assisted Decisions
+
+| Decision | Behavior |
+| --- | --- |
+| What a paragraph represents | Uses wording, neighboring content, Word styles, object order, and page appearance; bold text alone is not treated as proof of a heading |
+| Whether a table is safe to format | Formats straightforward data tables and preserves complicated ones for human review |
+| What kind of visual an object is | Identifies the format and available data before preserving, scaling, extracting, or reconstructing it |
+| Ambiguous content | Preserves the original instead of silently guessing and lists it under remaining review |
+
+#### Optional Extras
+
+| Feature | When it is useful | Default |
+| --- | --- | --- |
+| Vector export | Extract original SVG/EMF/WMF or reconstruct supported simple bar, line, and scatter charts as SVG when complete data are available | Off |
+| Continued-writing styles | Add new body text, headings, references, captions, notes, or block quotations inside the formatted copy | Off |
+| Saved HTML feedback | Keep the concise feedback as a separate browser-readable file | Off |
+| Inspect without editing | Review structure, risks, and supported objects before creating a formatted copy | On request |
+| Alternate APA-supported font | Meet a university, instructor, or journal requirement for another permitted font | On request |
+
+Continued-writing styles are not required for final formatting. They only add reusable styles such as `APA7 Body`, `APA7 Heading 1`, and `APA7 Reference` to Word, so new content added later can reuse the correct formatting. If the paper is already complete, leave this option off. It is disabled by default from v0.7 to keep the Word style gallery uncluttered.
+
+Formatting rules are linked to official APA pages, including [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format), [Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings), [Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables), [Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures), [Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list), and the [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date). Run `python3 apa7_format.py --sources` to view the stored short quotations and direct links.
+
+### How to Use It
+
+#### 1. Install the project
+
+Python 3.10 or later is required:
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --inspect-visuals
+git clone https://github.com/weirdfishes_2120/apa7-word-formatter.git
+cd apa7-word-formatter
+python3 -m pip install -r requirements.txt
 ```
 
-识别依赖 Word 文件内部的对象结构，不只是页面外观：原生表格具有行列结构；原生图表具有图表类型和数据缓存；插图具有图片关系和媒体文件。照片里拍到的表格、截图里的折线图仍会被识别为位图，本版不执行 OCR 或曲线取点。
+To use it as a personal Codex Skill, copy `skills/apa7-word-formatter` to:
 
-导出的文件放在同名 `.visuals` 文件夹内，含逐项说明的 JSON 清单。Word 中原有的可编辑图表仍保留。
+```text
+$HOME/.agents/skills/apa7-word-formatter/
+```
 
-| 来源 | 导出方式 | 准确性边界 |
-|---|---|---|
-| 原始 SVG／EMF／WMF | 按原始字节提取 | SVG 可能混有位图；EMF／WMF 也不因扩展名而被认定为纯矢量 |
-| 简单原生柱形／折线／散点图 | 根据完整的数据缓存重绘为独立 SVG | 是数据重绘，不是视觉效果逐像素复制；缓存可能与外链工作簿不同步，应核对数据及图例 |
-| 不支持的复杂图表 | 清单列明原因 | 双轴、误差线、趋势线、平滑曲线、缓存不完整等不会被简化成不准确的图 |
-| PNG／JPEG 等位图 | 原样提取 | 不会包装成带位图的 SVG 并宣称已经矢量化 |
-| Word 原生表格 | 保持为可编辑 Word 表格 | 表格排版与图片矢量化是不同处理过程 |
+For project-only use, place it in `.agents/skills/` at the repository root. See OpenAI's official [Build skills documentation](https://learn.chatgpt.com/docs/build-skills) for Skill discovery and invocation.
 
-SVG 格式允许混合矢量与位图，[W3C 的 SVG 规范](https://www.w3.org/TR/SVG/embedded.html)明确规定 `image` 元素可引用 PNG／JPEG。因此必须检查实际内容，而不能只看文件后缀。
+#### 2. Add the Word file to the workspace
 
-导出模块是同目录的 `apa7_visuals.py`，使用 ReportLab 绘制真正的图形与文本。仅使用核心格式处理时可以只复制 `apa7_format.py` 并安装 python-docx；使用图形识别和矢量导出时，应保留两个 Python 文件并安装完整 requirements。
+`.docx` is recommended. Save legacy `.doc` files as `.docx` in Word first and confirm that the conversion preserved the document.
 
-## 当前自动处理范围
+#### 3. Ask the AI to format it
 
-| 内容 | 已实现 | 需要注意 |
-|---|---|---|
-| 页面 | 四边 1 英寸页边距；保留纸张大小和方向 | 学校可能要求 A4 或装订边距；多栏文档需复核 |
-| 字体与正文 | 支持官网列出的六种字体组合；正文双倍行距、左齐、首行 0.5 英寸 | 保留普通正文中的粗斜体、上下标和特定符号字体；中文字体不宣称为 APA 指定字体 |
-| 页眉 | 自动页码；投稿模式增加全大写短标题 | 复杂原页眉默认保留并报告；页脚需检查是否有重复页码 |
-| 标题 | 已有 Heading 1–3 按对应层级排版 | 不根据粗体外观猜层级；四／五级需明确同行标题范围 |
-| 标题页 | 已确认的 Title 和元信息居中，标题加粗，设置标题起始留白与作者间隔 | 不编造作者、课程、单位和作者注；复杂标题页垂直位置需复核 |
-| 摘要／参考文献／附录 | 根据英文区段标签和明确角色设置对齐、缩进、区段分页 | 引文及参考文献内容、排序、标点和对应关系未自动校正；中文区段可用配置明确标记 |
-| 表格 | 简单原生 Word 表去竖线和网格，保留顶底／表头横线，表头重复；单元格单倍行距 | 默认第一行为表头；复杂合并／嵌套表保留并报告；不把问卷和数据表一概认定为同类 |
-| 图及图表标题 | 识别单独编号段和紧邻视觉对象的标题段，编号粗体、标题斜体；超宽内嵌图片等比例缩小 | 编号与标题在同一段时暂不拆分；浮动图、图内字体、坐标、清晰度、版权及编号顺序需复核 |
-| 块引用 | 对明确标为 Quote 的段落整体缩进、双倍行距 | 40 词规则、引用范围、后续段缩进与出处需确认 |
+Student paper:
 
-旧 `.doc` 可先在 Word 中另存为 `.docx`。也可通过 `--soffice "/可执行文件路径/soffice"` 调用已安装的 LibreOffice 转换器；转换后保留检查以转换所得 DOCX 为基准，旧格式转换保真需另查。本版不支持加密 Word、`.docm` 宏文件及 RTF。带未处理修订的文档会停止处理，要求先由作者审阅修订。
+> Use $apa7-word-formatter to format this Word document as an APA 7 student paper and review every page.
 
-## 复杂文档如何明确结构
+Professional manuscript:
 
-推荐先生成结构配置草稿（只读 Word，不生成格式副本）：
+> Use $apa7-word-formatter to format this Word document as an APA 7 professional paper. The running head is “SHORT PAPER TITLE.”
+
+Optional vector export:
+
+> Use $apa7-word-formatter to format this document as an APA 7 student paper and export any visuals that can be safely extracted or reconstructed as vectors.
+
+Continued-writing styles:
+
+> Use $apa7-word-formatter to format this document as an APA 7 student paper and add reusable APA7 Word styles for continued writing.
+
+If the paper type is missing, the Skill asks for it first. It then analyzes the structure, applies the formatting, verifies the saved result, and reviews the pages. The default deliverable is one new Word copy.
+
+#### 4. Run Python directly
+
+Open the local file picker:
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --profile student --prepare-config "/完整路径/结构确认.json"
+python3 apa7_format.py
 ```
 
-草稿的 `_review` 包含原段落文本、推定角色、建议标题页范围与分模式检查清单；顶层 `roles` 初始为空，不把推定自动当成已确认。将明确需要覆盖的角色填入顶层 `roles` 后使用 `--config`。草稿带有 `source_sha256`，只有同一版本原稿才允许应用；如果在 Word 中编辑或重新保存过原稿，应重新生成并确认配置。
-
-先只读列出段落及原有样式：
+Format a student paper from the command line:
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --inspect
+python3 apa7_format.py "/path/to/paper.docx" --profile student
 ```
 
-程序的段落编号为 1 起始，包含正文空段，但不包含表格单元格、文本框或内容控件内段落。按当前文档的实际编号建立 JSON 配置；不要把下面示例编号直接套到自己的论文。
-
-```json
-{
-  "roles": {
-    "1": "title",
-    "12": "heading2",
-    "16": "heading4",
-    "22": "reference",
-    "23": "reference",
-    "30": "preserve"
-  },
-  "title_page": [1, 7],
-  "run_in_headings": {
-    "16": "Response Accuracy."
-  },
-  "table_header_rows": {
-    "1": 2
-  },
-  "table_roles": {
-    "1": "data",
-    "2": "preserve"
-  },
-  "replace_headers": false
-}
-```
+Format a professional manuscript:
 
 ```sh
-python3 apa7_format.py "/完整路径/论文.docx" --profile student --config "/完整路径/配置.json"
+python3 apa7_format.py "/path/to/paper.docx" --profile professional --running-head "SHORT PAPER TITLE"
 ```
 
-`run_in_headings` 中的文本必须与该段开头完全匹配，包含结尾英文句号，并且后面已经接有同段正文。`title_page` 是现有标题页的起止段号。`replace_headers=true` 会在格式副本中重建页眉；原文件仍保留。自动结果中的 `assumption` 表示基于结构推定，需要确认。
-
-简单反馈会列出仍要人工确认的标题页信息、结构、引用、表格、图像与逐页视觉检查。这些项目不会因为 Python 成功运行就自动标成通过。
-
-## APA 官网依据
-
-规范只取自 APA 官方网站；核查日期为 2026-09-12。每个规则有官网标题、可点击链接、简短英文原文、中文实现摘要。原文保存在 `apa7_format.py` 的 `SOURCES`，运行下列命令即可查看：
+Optionally add reusable Word styles when the formatted copy will still be edited:
 
 ```sh
-python3 apa7_format.py --sources
+python3 apa7_format.py "/path/to/paper.docx" --profile student --add-styles
 ```
 
-主要入口：[Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list)。
+Running Python by itself applies deterministic formatting and preservation checks. It does not replace the AI's judgment about heading hierarchy, object purpose, or page appearance.
 
-官网免费页面并不等于完整出版手册。官方第七版手册仍是完整规范参考；本工具没有声称覆盖手册中所有文献类型、统计表达、伦理及版权要求。
+### Important Boundaries
 
-## Python 与 Skill 的分工
-
-Python 负责可测试的文档读写、资源保留、配置校验和排版；专用 Skill 指导 AI 结合论文内容补全角色配置、解读审计结果并渲染复核。[OpenAI 官方 Skill 文档](https://learn.chatgpt.com/docs/build-skills)说明 Skill 可包含说明、资源和可执行脚本。
-
-使用通用 documents 技能时，让用户指定的 APA 规则优先于通用设计默认值，尤其是图注位置、表格边框和段落间距。不为了视觉美观重写论文或改动统计结论。
-
-## 开发验证
-
-```sh
-python3 -m unittest discover -s . -p "test_*.py" -v
-```
-
-`qa_demo.py` 是内部渲染验收用的人工样例生成器，需要 Pillow；日常格式化不需要此依赖。它生成的研究数据与参考文献均是测试占位材料。
-
-维护引擎后，运行 `python3 build_skill.py` 将三个引擎脚本及依赖清单同步到技能包。使用 `--archive /一个尚不存在的路径/apa7-word-formatter.zip` 可生成独立技能压缩包。不要手工修改技能目录中这些自动同步的脚本，以免与主程序分叉。
+- Specific university, instructor, or journal requirements take priority over general APA formatting.
+- The tool never invents author information, references, research data, or missing content.
+- Citation matching, title case, complex tables, figure clarity, copyright, and final pagination may still require author review.
+- This is an APA 7 formatting and review assistant, not an official APA certification tool.

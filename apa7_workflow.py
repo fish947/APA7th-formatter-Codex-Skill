@@ -14,6 +14,22 @@ from datetime import datetime, timezone
 import apa7_format as engine
 
 
+COMPLIANCE_AREAS = {
+    "target_requirements": "学校、课程或期刊的特殊要求",
+    "title_page": "标题页与论文模式必需信息",
+    "abstract_keywords": "摘要与关键词",
+    "headings": "文档层级、标题格式与 title case",
+    "citations_references": "正文引文与参考文献",
+    "tables": "表格编号、标题、表头、注释与 callout",
+    "figures": "图片／图表编号、标题、注释、数据与 callout",
+    "appendices": "附录及附录图表编号",
+}
+
+
+def compliance_template():
+    return {key: {"status": "pending", "reason": ""} for key in COMPLIANCE_AREAS}
+
+
 def write_new_json(path, value):
     path = Path(path).expanduser().absolute()
     if path.exists() or path.is_symlink():
@@ -35,7 +51,8 @@ def load_json(path):
 def prepare(source, profile):
     draft = engine.prepare_config(source, profile)
     draft.update(review_status="pending", profile=profile,
-                 decision_notes={"paragraphs": {}, "tables": {}}, unresolved=[])
+                 decision_notes={"paragraphs": {}, "tables": {}},
+                 compliance_review=compliance_template(), unresolved=[])
     return draft
 
 
@@ -47,6 +64,36 @@ def check_note(notes, key, role):
         raise ValueError(f"对象 {key} 缺少分类依据。")
     if note["confidence"] == "uncertain" and role != "preserve":
         raise ValueError(f"不确定对象 {key} 必须设为 preserve，不能强行排版。")
+
+
+def validate_compliance_review(config, fresh):
+    review = config.get("compliance_review")
+    if not isinstance(review, dict) or set(review) != set(COMPLIANCE_AREAS):
+        raise ValueError("compliance_review 必须覆盖全部 APA 内容审核项目。")
+    valid_statuses = {"pass", "needs_review", "not_applicable"}
+    for key, label in COMPLIANCE_AREAS.items():
+        item = review[key]
+        if not isinstance(item, dict) or item.get("status") not in valid_statuses:
+            raise ValueError(f"APA 内容审核“{label}”需要 pass、needs_review 或 not_applicable 状态。")
+        if not isinstance(item.get("reason"), str) or not item["reason"].strip():
+            raise ValueError(f"APA 内容审核“{label}”缺少实际检查说明。")
+    for key in ("target_requirements", "title_page"):
+        if review[key]["status"] == "not_applicable":
+            raise ValueError(f"APA 内容审核“{COMPLIANCE_AREAS[key]}”不能标为不适用。")
+    objects = fresh["_review"].get("object_summary", {})
+    for signal, area, message in (
+            ("suggested_abstract_items", "abstract_keywords", "文档中检测到摘要或关键词内容，摘要／关键词审核不能标为不适用。"),
+            ("suggested_heading_items", "headings", "文档中检测到标题层级，标题审核不能标为不适用。"),
+            ("suggested_reference_entries", "citations_references", "文档中检测到参考文献条目，引文／参考文献审核不能标为不适用。"),
+            ("suggested_appendix_labels", "appendices", "文档中检测到附录标签，附录审核不能标为不适用。")):
+        if objects.get(signal, 0) and review[area]["status"] == "not_applicable":
+            raise ValueError(message)
+    if objects.get("top_level_tables", 0) and review["tables"]["status"] == "not_applicable":
+        raise ValueError("文档中存在表格，表格审核不能标为不适用。")
+    if (objects.get("inline_drawings", 0) or objects.get("floating_drawings", 0) or objects.get("native_charts", 0)) \
+            and review["figures"]["status"] == "not_applicable":
+        raise ValueError("文档中存在图片或图表，图片／图表审核不能标为不适用。")
+    return copy.deepcopy(review)
 
 
 def validate_review(source, config, profile):
@@ -110,12 +157,13 @@ def validate_review(source, config, profile):
     unresolved = config.get("unresolved", [])
     if not isinstance(unresolved, list) or any(not isinstance(x, str) for x in unresolved):
         raise ValueError("unresolved 必须是待确认事项字符串列表。")
+    compliance_review = validate_compliance_review(config, fresh)
     validated = copy.deepcopy(config)
     validated.pop("_review", None)
-    validated["ai_review"] = {"status": "classification_record_validated",
+    validated["ai_review"] = {"status": "classification_and_compliance_record_validated",
                               "source_sha256": fresh["source_sha256"], "decisions": notes,
-                              "unresolved": unresolved,
-                              "limitation": "Record consistency is validated; semantic correctness is not proven."}
+                              "compliance_review": compliance_review, "unresolved": unresolved,
+                              "limitation": "Record completeness is validated; the accuracy of AI judgments still depends on the supplied evidence."}
     return validated
 
 
@@ -198,6 +246,7 @@ def main(argv=None):
     apply.add_argument("--font", choices=tuple(engine.FONTS), default="Times New Roman")
     apply.add_argument("--running-head", default="")
     apply.add_argument("--export-visuals", action="store_true")
+    apply.add_argument("--add-styles", action="store_true")
     render = commands.add_parser("render", help="调用当前环境的可信 documents 渲染器")
     render.add_argument("source", type=Path)
     render.add_argument("--renderer", type=Path, required=True)
@@ -213,7 +262,8 @@ def main(argv=None):
             print(write_new_json(args.output, prepare(args.source, args.profile)))
         elif args.command == "apply":
             out, report = apply_reviewed(args.source, load_json(args.config), profile=args.profile, output=args.output,
-                                         font=args.font, running_head=args.running_head, export_visuals=args.export_visuals)
+                                         font=args.font, running_head=args.running_head,
+                                         export_visuals=args.export_visuals, add_styles=args.add_styles)
             print(json.dumps({"document": str(out), "document_sha256": engine.digest(out),
                               "status": report["status"], "feedback": report["feedback"]}, ensure_ascii=False, indent=2))
         elif args.command == "render":

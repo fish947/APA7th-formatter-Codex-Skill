@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.4.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.7.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -32,6 +32,7 @@ from zipfile import ZipFile
 
 try:
     from docx import Document
+    from docx.enum.style import WD_STYLE_TYPE
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_TAB_ALIGNMENT
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.oxml import OxmlElement
@@ -42,7 +43,7 @@ try:
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.4.0"
+VERSION = "0.7.0"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -77,6 +78,9 @@ SOURCES = {
     "references": {"title": "Reference List Setup", "path": "paper-format/reference-list",
                    "quote": "Type each reference as a single paragraph, justified to the left margin.",
                    "rule": "新页居中粗体 References；条目双倍行距、0.5 英寸悬挂缩进。排序及正文引用对应须核对，个人通信等有例外。"},
+    "citation_match": {"title": "Author-Date Citation System", "path": "citations/basic-principles/author-date",
+                       "quote": "Each work cited must appear in the reference list, and each work in the reference list must be cited in the text.",
+                       "rule": "正文引文与参考文献表应相互对应；本工具只做作者—年份的轻量提示，不自动增删文献。"},
     "tables": {"title": "Table Setup", "path": "tables-figures/tables",
                "quote": "Do not use vertical borders to separate data, and do not use borders around every cell in a table.",
                "rule": "编号粗体、标题另行斜体，均位于表上方。表头居中；首列正文左齐。通常保留顶线、底线及表头下线；复杂表可有必要横线。"},
@@ -103,6 +107,50 @@ ROLES = {"body", "title", "title_meta", "section", "abstract", "reference",
          "heading1", "heading2", "heading3", "heading4", "heading5",
          "caption_number", "caption_title", "note", "quote", "quote_continuation",
          "appendix", "appendix_title", "keywords", "preserve"}
+
+APA7_PARAGRAPH_STYLES = {
+    "APA7 Body": {"indent": 0.5, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Title": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.CENTER, "bold": True, "italic": False, "keep": True},
+    "APA7 Title Metadata": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.CENTER, "bold": False, "italic": False, "keep": False},
+    "APA7 Abstract": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Keywords": {"indent": 0.5, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Heading 1": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.CENTER, "bold": True, "italic": False, "keep": True},
+    "APA7 Heading 2": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": True, "italic": False, "keep": True},
+    "APA7 Heading 3": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": True, "italic": True, "keep": True},
+    "APA7 Reference": {"indent": -0.5, "left": 0.5, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Caption Number": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": True, "italic": False, "keep": True},
+    "APA7 Caption Title": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": True, "keep": True},
+    "APA7 Note": {"indent": 0, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Block Quote": {"indent": 0, "left": 0.5, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+    "APA7 Run-in Heading": {"indent": 0.5, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
+}
+APA7_CHARACTER_STYLES = {
+    "APA7 Level 4 Prefix": {"bold": True, "italic": False},
+    "APA7 Level 5 Prefix": {"bold": True, "italic": True},
+}
+ROLE_STYLE_NAMES = {
+    "body": "APA7 Body", "title": "APA7 Title", "title_meta": "APA7 Title Metadata",
+    "abstract": "APA7 Abstract", "keywords": "APA7 Keywords", "section": "APA7 Heading 1",
+    "appendix": "APA7 Heading 1", "appendix_title": "APA7 Heading 1",
+    "heading1": "APA7 Heading 1", "heading2": "APA7 Heading 2", "heading3": "APA7 Heading 3",
+    "reference": "APA7 Reference", "caption_number": "APA7 Caption Number",
+    "caption_title": "APA7 Caption Title", "note": "APA7 Note",
+    "quote": "APA7 Block Quote", "quote_continuation": "APA7 Block Quote",
+}
+STYLE_ROLE_HINTS = {
+    "APA7 Body": "body", "APA7 Title": "title", "APA7 Title Metadata": "title_meta",
+    "APA7 Abstract": "abstract", "APA7 Keywords": "keywords",
+    "APA7 Heading 1": "heading1", "APA7 Heading 2": "heading2", "APA7 Heading 3": "heading3",
+    "APA7 Reference": "reference", "APA7 Caption Number": "caption_number",
+    "APA7 Caption Title": "caption_title", "APA7 Note": "note", "APA7 Block Quote": "quote",
+}
+
+_YEAR = r"(?:1[5-9]\d{2}|20\d{2})[a-z]?|n\.d\."
+_PARENTHETICAL_CITATION = re.compile(r"(?P<author>[^,;()]{1,120}?),\s*(?P<year>" + _YEAR + r")", re.I)
+_NARRATIVE_CITATION = re.compile(
+    r"\b(?P<author>[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+(?:et\s+al\.|and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|&\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)){0,4})"
+    r"\s*\((?P<year>" + _YEAR + r")\)")
+_REFERENCE_YEAR = re.compile(r"\((?P<year>" + _YEAR + r")\)", re.I)
 
 
 def digest(path: Path) -> str:
@@ -207,6 +255,106 @@ def paragraph_format(p, *, indent=0.5, left=0, align=WD_ALIGN_PARAGRAPH.LEFT,
     child(pr, "w:contextualSpacing", {"w:val": "0"})
 
 
+def _configure_style_font(style, font, *, bold, italic):
+    style.font.name = font
+    style.font.size = Pt(FONTS[font])
+    style.font.bold = bold
+    style.font.italic = italic
+    style.font.color.rgb = RGBColor(0, 0, 0)
+    style.font.underline = False
+    style.font.all_caps = False
+    style.font.small_caps = False
+    fonts = style.element.get_or_add_rPr().rFonts
+    for attr in ("asciiTheme", "hAnsiTheme", "cstheme"):
+        fonts.attrib.pop(qn("w:" + attr), None)
+
+
+def _configure_paragraph_style(style, font, spec):
+    _configure_style_font(style, font, bold=spec["bold"], italic=spec["italic"])
+    pf = style.paragraph_format
+    pf.alignment = spec["align"]
+    pf.left_indent, pf.right_indent = Inches(spec["left"]), Inches(0)
+    pf.first_line_indent = Inches(spec["indent"])
+    pf.space_before = pf.space_after = Pt(0)
+    pf.line_spacing = 2.0
+    pf.keep_with_next = spec["keep"]
+    pf.keep_together = False
+    pf.widow_control = True
+    pr = style.element.get_or_add_pPr()
+    child(pr, "w:snapToGrid", {"w:val": "0"})
+    child(pr, "w:contextualSpacing", {"w:val": "0"})
+
+
+def _author_key(author):
+    """Return a conservative first-author/group-author key for a review hint."""
+    if re.search(r"[=<>]", author):
+        return ""
+    author = re.sub(r"^\s*(?:see|e\.g\.,?|cf\.)\s+", "", author, flags=re.I)
+    author = re.sub(r"\s+et\s+al\.?\s*$", "", author, flags=re.I)
+    author = re.split(r"\s+(?:&|and)\s+|,", author, maxsplit=1, flags=re.I)[0]
+    author = re.sub(r"[^\w'’.-]+", " ", author, flags=re.UNICODE).strip(" .-'’_")
+    author = re.sub(r"\s+", " ", author)
+    return author.casefold() if any(character.isalpha() for character in author) else ""
+
+
+def citation_reference_check(paragraphs, roles):
+    """Lightweight author-year correspondence check; never edits bibliography text."""
+    citations, references, unparsed = {}, {}, []
+    for index, paragraph in enumerate(paragraphs):
+        text = visible_text(paragraph).strip()
+        if not text:
+            continue
+        role = roles.get(index, "body")
+        if role == "reference":
+            year_match = _REFERENCE_YEAR.search(text)
+            if not year_match:
+                unparsed.append(index + 1)
+                continue
+            author_display = text[:year_match.start()].strip()
+            key = (_author_key(author_display), year_match.group("year").casefold())
+            if not key[0]:
+                unparsed.append(index + 1)
+                continue
+            record = references.setdefault(key, {"author": author_display, "year": year_match.group("year"), "paragraphs": []})
+            record["paragraphs"].append(index + 1)
+            continue
+        if role in {"title", "title_meta", "caption_number", "caption_title", "appendix", "appendix_title"}:
+            continue
+        for group in re.findall(r"\(([^()]*)\)", text):
+            for match in _PARENTHETICAL_CITATION.finditer(group):
+                author_display, year = match.group("author").strip(), match.group("year")
+                key = (_author_key(author_display), year.casefold())
+                if key[0]:
+                    record = citations.setdefault(key, {"author": author_display, "year": year, "paragraphs": []})
+                    if index + 1 not in record["paragraphs"]:
+                        record["paragraphs"].append(index + 1)
+        without_parentheses = re.sub(r"\([^()]*\)", "", text)
+        for match in _NARRATIVE_CITATION.finditer(text):
+            # The match itself contains the year parentheses, so reject only if
+            # the author text disappeared while stripping other parentheticals.
+            if match.group("author") not in without_parentheses:
+                continue
+            author_display, year = match.group("author").strip(), match.group("year")
+            key = (_author_key(author_display), year.casefold())
+            if key[0]:
+                record = citations.setdefault(key, {"author": author_display, "year": year, "paragraphs": []})
+                if index + 1 not in record["paragraphs"]:
+                    record["paragraphs"].append(index + 1)
+    unmatched = [value for key, value in citations.items() if key not in references]
+    uncited = [value for key, value in references.items() if key not in citations]
+    if not citations and not references and not unparsed:
+        status = "not_applicable"
+    elif unmatched or uncited or unparsed:
+        status = "needs_review"
+    else:
+        status = "passed"
+    return {"status": status, "citations_found": len(citations), "reference_entries": len(references) + len(unparsed),
+            "unmatched_citations": unmatched, "uncited_references": uncited,
+            "unparsed_reference_paragraphs": unparsed,
+            "limitation": "Author-year pattern check only; group authors, translated works, secondary citations, personal communications and bibliographic facts still require review.",
+            "source_url": SOURCES["citation_match"]["url"]}
+
+
 def content_signature(doc):
     """Verify content, fields, drawings, math and anchors independently of styles."""
     root = doc._element.body
@@ -231,7 +379,8 @@ def package_payloads(path):
 
 
 class Formatter:
-    def __init__(self, doc, profile="student", font="Times New Roman", running_head="", config=None):
+    def __init__(self, doc, profile="student", font="Times New Roman", running_head="", config=None,
+                 add_styles=False):
         self.doc, self.profile, self.font = doc, profile, font
         self.config = config or {}
         self.running_head = running_head.upper().strip()
@@ -240,10 +389,59 @@ class Formatter:
         self.roles = {}
         self.counts = Counter()
         self.cover = None
+        self.applied_styles = {}
+        self.add_styles = add_styles
 
     def event(self, status, message, rule=None, location="document"):
         self.events.append({"status": status, "location": location, "message": message,
                             "rule": rule, "source_url": SOURCES[rule]["url"] if rule else None})
+
+    def reusable_styles(self):
+        """Create formatter-owned styles without changing user styles used by preserved content."""
+        styles = self.doc.styles
+        created = {}
+        for name, spec in APA7_PARAGRAPH_STYLES.items():
+            try:
+                style = styles[name]
+            except KeyError:
+                style = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+            if style.type != WD_STYLE_TYPE.PARAGRAPH:
+                raise ValueError(f"现有样式“{name}”类型冲突，无法建立可继续编辑的 APA7 样式。")
+            _configure_paragraph_style(style, self.font, spec)
+            style.quick_style = True
+            style.hidden = False
+            style.unhide_when_used = True
+            created[name] = style
+        for name, spec in APA7_CHARACTER_STYLES.items():
+            try:
+                style = styles[name]
+            except KeyError:
+                style = styles.add_style(name, WD_STYLE_TYPE.CHARACTER)
+            if style.type != WD_STYLE_TYPE.CHARACTER:
+                raise ValueError(f"现有样式“{name}”类型冲突，无法建立可继续编辑的 APA7 样式。")
+            _configure_style_font(style, self.font, bold=spec["bold"], italic=spec["italic"])
+            style.quick_style = True
+            style.hidden = False
+            style.unhide_when_used = True
+            created[name] = style
+        body = created["APA7 Body"]
+        for name in ("APA7 Heading 1", "APA7 Heading 2", "APA7 Heading 3", "APA7 Abstract", "APA7 Keywords",
+                     "APA7 Caption Title", "APA7 Note", "APA7 Block Quote", "APA7 Run-in Heading"):
+            created[name].next_paragraph_style = body
+        created["APA7 Title"].next_paragraph_style = created["APA7 Title Metadata"]
+        created["APA7 Title Metadata"].next_paragraph_style = created["APA7 Title Metadata"]
+        created["APA7 Body"].next_paragraph_style = body
+        created["APA7 Reference"].next_paragraph_style = created["APA7 Reference"]
+        created["APA7 Caption Number"].next_paragraph_style = created["APA7 Caption Title"]
+        self.event("applied", "已加入可继续编辑的 APA7 正文、标题、参考文献、图表说明和块引用样式。", "paragraph")
+
+    def apply_role_style(self, index, paragraph, role):
+        if not self.add_styles:
+            return
+        name = ROLE_STYLE_NAMES.get(role)
+        if name:
+            paragraph.style = self.doc.styles[name]
+            self.applied_styles[index] = name
 
     def detect_roles(self):
         state = "body"
@@ -267,6 +465,13 @@ class Formatter:
                 state = "abstract" if text.casefold() == "abstract" else "reference" if text.casefold() in {"references", "reference"} else "body"
             elif re.fullmatch(r"Appendix(?: [A-Z])?", text):
                 role, state = "appendix", "body"
+            elif style in STYLE_ROLE_HINTS:
+                role, state = STYLE_ROLE_HINTS[style], "body"
+                if role == "title":
+                    title_indices.append(i)
+            elif style == "APA7 Run-in Heading":
+                role, state = ("heading5" if any(run.style and run.style.name == "APA7 Level 5 Prefix" for run in p.runs)
+                               else "heading4"), "body"
             elif re.fullmatch(r"Heading [1-5]", style):
                 role, state = "heading" + style[-1], "body"
             elif style == "Title":
@@ -460,10 +665,18 @@ class Formatter:
         if not split_plain_run_at(p, len(prefix)):
             self.event("review", "行内标题含复杂域或嵌入对象，已保留。", "headings", f"p{i+1}")
             return False
-        p.style = self.doc.styles["Normal"]
+        if self.add_styles:
+            p.style = self.doc.styles["APA7 Run-in Heading"]
+            self.applied_styles[i] = "APA7 Run-in Heading"
+            prefix_style = self.doc.styles["APA7 Level 5 Prefix" if role == "heading5" else "APA7 Level 4 Prefix"]
+        else:
+            p.style = self.doc.styles["Normal"]
+            prefix_style = None
         offset = 0
         for run in p.runs:
             if offset < len(prefix):
+                if prefix_style is not None:
+                    run.style = prefix_style
                 run.bold = True
                 run.italic = role == "heading5"
             else:
@@ -490,6 +703,7 @@ class Formatter:
                 continue
             if p._p.xpath(".//wp:inline") and not text:
                 continue
+            self.apply_role_style(i, p, role)
             # Do not discard scientific italic/superscript/bold in ordinary prose.
             typography(p, self.font)
             paragraph_format(p)
@@ -655,6 +869,8 @@ class Formatter:
         self.detect_roles()
         self.sections()
         self.header_footer()
+        if self.add_styles:
+            self.reusable_styles()
         self.paragraphs_format()
         self.tables()
         self.images()
@@ -716,6 +932,22 @@ def prepare_config(path, profile="student"):
                "complex": bool(t._tbl.xpath(".//w:gridSpan | .//w:vMerge | .//w:hMerge | .//w:tbl | ./w:tr/w:trPr/w:gridBefore | ./w:tr/w:trPr/w:gridAfter")),
                "cells": [[c.text for c in row.cells] for row in t.rows]}
               for i, t in enumerate(doc.tables, 1)]
+    object_summary = {
+        "top_level_tables": len(tables),
+        "inline_drawings": len(doc._element.xpath(".//wp:inline")),
+        "floating_drawings": len(doc._element.xpath(".//wp:anchor")),
+        "native_charts": len(doc._element.xpath(".//c:chart")),
+        "suggested_abstract_items": sum(role in {"abstract", "keywords"} for role in formatter.roles.values()),
+        "suggested_heading_items": sum(role in {"heading1", "heading2", "heading3", "heading4", "heading5"}
+                                       for role in formatter.roles.values()),
+        "suggested_reference_entries": sum(role == "reference" for role in formatter.roles.values()),
+        "suggested_appendix_labels": sum(role == "appendix" for role in formatter.roles.values()),
+    }
+    structural_roles = {"title", "section", "heading1", "heading2", "heading3", "heading4", "heading5",
+                        "appendix", "appendix_title", "caption_number", "caption_title"}
+    hierarchy_outline = [{"paragraph": i + 1, "role": formatter.roles[i], "text": visible_text(p)}
+                         for i, p in enumerate(doc.paragraphs) if formatter.roles[i] in structural_roles]
+    citation_review = citation_reference_check(doc.paragraphs, formatter.roles)
     paragraph_ids = {p._p: i for i, p in enumerate(doc.paragraphs, 1)}
     table_ids = {t._tbl: i for i, t in enumerate(doc.tables, 1)}
     body_order = []
@@ -735,7 +967,8 @@ def prepare_config(path, profile="student"):
                         "instructions": "下方仅为推定，不会自动写入 roles。确认后把需要覆盖的段落编号与角色填入顶层 roles；原稿变化后必须重新生成配置。",
                         "suggested_title_page": [i + 1 for i in formatter.cover] if formatter.cover else None,
                         "allowed_roles": sorted(ROLES), "paragraphs": paragraphs,
-                        "tables": tables, "body_order": body_order,
+                        "tables": tables, "body_order": body_order, "object_summary": object_summary,
+                        "hierarchy_outline": hierarchy_outline, "citation_reference_check": citation_review,
                         "events": formatter.events, "checklist": review_checklist(profile)}}
 
 
@@ -749,6 +982,159 @@ def save_config_draft(source, destination, profile="student"):
     with destination.open("x", encoding="utf-8") as output:
         json.dump(draft, output, ensure_ascii=False, indent=2)
     return destination
+
+
+def verify_saved_format(doc, formatter):
+    """Verify core formatting after the DOCX has been saved and reopened."""
+    checks, failures = [], []
+
+    def result(key, label, status, details, rule):
+        checks.append({"id": key, "label": label, "status": status, "details": details,
+                       "source_url": SOURCES[rule]["url"]})
+
+    margin_issues = []
+    for number, section in enumerate(doc.sections, 1):
+        for side in ("top_margin", "bottom_margin", "left_margin", "right_margin"):
+            value = getattr(section, side)
+            if value is None or abs(value.inches - 1.0) > 0.002:
+                margin_issues.append(f"section{number}.{side}")
+    if margin_issues:
+        failures.append("页边距未保存到 1 英寸：" + "、".join(margin_issues))
+    else:
+        result("margins", "页边距", "passed", f"{len(doc.sections)} 个节的四边页边距均为 1 英寸。", "margins")
+
+    centered = {"title", "title_meta", "section", "appendix", "appendix_title", "heading1"}
+    no_indent = centered | {"heading2", "heading3", "title_meta", "abstract",
+                            "caption_number", "caption_title", "note"}
+    paragraph_issues, font_issues, verified_paragraphs = [], [], 0
+    for index, paragraph in enumerate(doc.paragraphs):
+        role = formatter.roles.get(index, "preserve")
+        text = visible_text(paragraph).strip()
+        if role == "preserve" or role in {"heading4", "heading5"} or (paragraph._p.xpath(".//wp:inline") and not text):
+            continue
+        verified_paragraphs += 1
+        expected_align = WD_ALIGN_PARAGRAPH.CENTER if role in centered else WD_ALIGN_PARAGRAPH.LEFT
+        expected_left = 0.5 if role in {"reference", "quote", "quote_continuation"} else 0.0
+        if role == "reference":
+            expected_first = -0.5
+        elif role == "quote":
+            expected_first = 0.0
+        elif role == "quote_continuation":
+            expected_first = 0.5
+        elif role in no_indent:
+            expected_first = 0.0
+        else:
+            expected_first = 0.5
+        pf = paragraph.paragraph_format
+        actual_left = 0.0 if pf.left_indent is None else pf.left_indent.inches
+        actual_first = 0.0 if pf.first_line_indent is None else pf.first_line_indent.inches
+        if pf.alignment != expected_align or abs(actual_left - expected_left) > 0.002 or abs(actual_first - expected_first) > 0.002:
+            paragraph_issues.append(str(index + 1))
+        if not isinstance(pf.line_spacing, float) or abs(pf.line_spacing - 2.0) > 0.001:
+            paragraph_issues.append(str(index + 1))
+        for run in all_runs(paragraph):
+            if not run.text or run.font.name in {"Symbol", "Wingdings", "Cambria Math", "Courier New", "Consolas"}:
+                continue
+            size = run.font.size.pt if run.font.size is not None else None
+            if run.font.name != formatter.font or size is None or abs(size - FONTS[formatter.font]) > 0.05:
+                font_issues.append(str(index + 1))
+                break
+    paragraph_issues = sorted(set(paragraph_issues), key=int)
+    font_issues = sorted(set(font_issues), key=int)
+    if paragraph_issues:
+        failures.append("段落对齐、缩进或双倍行距保存异常：第 " + _ranges(map(int, paragraph_issues)) + " 段")
+    else:
+        result("paragraph_layout", "段落格式", "passed", f"已重新打开并核验 {verified_paragraphs} 个已处理段落。", "paragraph")
+    if font_issues:
+        failures.append("字体或字号保存异常：第 " + _ranges(map(int, font_issues)) + " 段")
+    else:
+        result("typography", "字体与字号", "passed", f"已处理段落使用 {formatter.font} {FONTS[formatter.font]} pt；特殊符号和代码字体保留。", "font")
+
+    table_issues, verified_tables = [], 0
+    table_roles = formatter.config.get("table_roles", {})
+    for number, table in enumerate(doc.tables, 1):
+        if table_roles.get(str(number)) == "preserve" or table._tbl.xpath(
+                ".//w:gridSpan | .//w:vMerge | .//w:hMerge | ./w:tr/w:trPr/w:gridBefore | ./w:tr/w:trPr/w:gridAfter | .//w:tbl"):
+            continue
+        verified_tables += 1
+        borders = table._tbl.tblPr.find(qn("w:tblBorders"))
+        values = {} if borders is None else {etree.QName(edge).localname: edge.get(qn("w:val")) for edge in borders}
+        if values.get("top") != "single" or values.get("bottom") != "single" or any(
+                values.get(edge) != "nil" for edge in ("left", "right", "insideV")):
+            table_issues.append(str(number))
+    if table_issues:
+        failures.append("表格边框保存异常：表格 " + "、".join(table_issues))
+    else:
+        result("table_rules", "表格横线", "passed",
+               f"已重新打开并核验 {verified_tables} 个简单数据表；保留型或复杂表不计入自动通过。", "tables")
+
+    if formatter.add_styles:
+        style_issues = []
+        for name, spec in APA7_PARAGRAPH_STYLES.items():
+            try:
+                style = doc.styles[name]
+            except KeyError:
+                style_issues.append(name + " 缺失")
+                continue
+            pf, sf = style.paragraph_format, style.font
+            left = 0.0 if pf.left_indent is None else pf.left_indent.inches
+            first = 0.0 if pf.first_line_indent is None else pf.first_line_indent.inches
+            size = sf.size.pt if sf.size is not None else None
+            if (style.type != WD_STYLE_TYPE.PARAGRAPH or sf.name != formatter.font or size is None
+                    or abs(size - FONTS[formatter.font]) > 0.05 or sf.bold is not spec["bold"]
+                    or sf.italic is not spec["italic"] or pf.alignment != spec["align"]
+                    or abs(left - spec["left"]) > 0.002 or abs(first - spec["indent"]) > 0.002
+                    or not isinstance(pf.line_spacing, float) or abs(pf.line_spacing - 2.0) > 0.001):
+                style_issues.append(name)
+        for name, spec in APA7_CHARACTER_STYLES.items():
+            try:
+                style = doc.styles[name]
+            except KeyError:
+                style_issues.append(name + " 缺失")
+                continue
+            size = style.font.size.pt if style.font.size is not None else None
+            if (style.type != WD_STYLE_TYPE.CHARACTER or style.font.name != formatter.font or size is None
+                    or abs(size - FONTS[formatter.font]) > 0.05 or style.font.bold is not spec["bold"]
+                    or style.font.italic is not spec["italic"]):
+                style_issues.append(name)
+        for index, name in formatter.applied_styles.items():
+            if index >= len(doc.paragraphs) or doc.paragraphs[index].style.name != name:
+                style_issues.append(f"第 {index + 1} 段未绑定 {name}")
+        if style_issues:
+            failures.append("可继续编辑的 APA7 样式保存异常：" + "、".join(style_issues))
+        else:
+            result("reusable_styles", "可继续编辑样式", "passed",
+                   f"已重新打开并确认 {len(APA7_PARAGRAPH_STYLES)} 个段落样式和 {len(APA7_CHARACTER_STYLES)} 个同行标题样式。", "paragraph")
+
+    missing_page, missing_head = [], []
+    seen = set()
+    for section_number, section in enumerate(doc.sections, 1):
+        for label, container in (("default", section.header), ("first", section.first_page_header),
+                                 ("even", section.even_page_header)):
+            root = container._element
+            if root in seen:
+                continue
+            seen.add(root)
+            instructions = " ".join(root.xpath(".//w:instrText/text()") + root.xpath(".//w:fldSimple/@w:instr"))
+            if not re.search(r"\bPAGE\b", instructions, re.I):
+                missing_page.append(f"section{section_number}.{label}")
+            if formatter.profile == "professional" and formatter.running_head:
+                header_text = "".join(root.xpath(".//w:t/text()"))
+                if formatter.running_head not in header_text:
+                    missing_head.append(f"section{section_number}.{label}")
+    header_notes = []
+    if missing_page:
+        header_notes.append("以下页眉变体没有确认到自动页码：" + "、".join(missing_page))
+    if formatter.profile == "professional" and not formatter.running_head:
+        header_notes.append("专业论文尚未提供 running head。")
+    elif missing_head:
+        header_notes.append("以下页眉变体没有确认到 running head：" + "、".join(missing_head))
+    result("page_header", "页码与页眉", "needs_review" if header_notes else "passed",
+           "；".join(header_notes) if header_notes else "已重新打开并确认自动 PAGE 域及所选模式的页眉。", "header")
+
+    if failures:
+        raise RuntimeError("保存后格式核验失败，未交付文件；" + "；".join(failures))
+    return checks
 
 
 def _ranges(numbers):
@@ -772,10 +1158,17 @@ def simple_feedback(report):
     inventory = report.get("visuals", {}).get("inventory", {}).get("counts", {})
     table_count = inventory.get("native_tables", 0)
     figure_count = inventory.get("native_charts", 0) + inventory.get("raster_media", 0) + inventory.get("vector_media", 0)
+    citation_check = report.get("citation_reference_check") or {}
 
     changed = ["页面和正文：统一页边距、字体、双倍行距、段落间距和页码。"]
-    changed.append("页眉：学生论文只保留页码。" if report["profile"] == "student"
-                   else "页眉：加入页码，并按专业论文规则处理短标题。")
+    if report.get("reusable_styles_added"):
+        changed.append("继续写作：已按你的要求加入 APA7 正文、标题、参考文献和图表说明样式。")
+    if report["profile"] == "student":
+        changed.append("页眉：按学生论文模式处理页码。")
+    elif report.get("running_head"):
+        changed.append("页眉：按专业论文模式处理 running head 和页码。")
+    else:
+        changed.append("页眉：已处理页码；尚未添加缺失的 running head。")
     if by_role.get("title") or by_role.get("title_meta"):
         changed.append("标题页：统一标题和作者信息的对齐、粗体及间距。")
     if any(by_role.get(f"heading{i}") for i in range(1, 6)):
@@ -811,6 +1204,8 @@ def simple_feedback(report):
         source_keys.append("headings")
     if by_role.get("reference"):
         source_keys.append("references")
+    if citation_check.get("citations_found") or citation_check.get("reference_entries"):
+        source_keys.append("citation_match")
     if table_count:
         source_keys.append("tables")
     if figure_count:
@@ -818,19 +1213,44 @@ def simple_feedback(report):
     sources = [{"title": SOURCES[key]["title"], "url": SOURCES[key]["url"],
                 "quote": SOURCES[key]["quote"]} for key in source_keys]
 
-    review = ["确认标题页姓名、学校、课程、教师和日期等信息是否完整。"
-              if report["profile"] == "student" else
-              "确认作者单位、作者注和 running head 是否符合投稿要求。",
-              "确认标题层级是否判断正确。",
-              "核对正文引用与参考文献内容、顺序、DOI 和斜体。"]
-    if table_count:
-        review.append("核对表格编号、标题、表头、注释及正文提及顺序。")
-    if figure_count:
-        review.append("核对图的编号、标题、清晰度、图例、单位和版权说明。")
+    ai_review = report.get("ai_review") or {}
+    compliance = ai_review.get("compliance_review") or {}
+    labels = {"target_requirements": "目标要求", "title_page": "标题页",
+              "abstract_keywords": "摘要与关键词", "headings": "标题层级",
+              "citations_references": "引文与参考文献", "tables": "表格",
+              "figures": "图片与图表", "appendices": "附录"}
+    if compliance:
+        review = [f"{labels.get(key, key)}：{item['reason']}" for key, item in compliance.items()
+                  if item.get("status") == "needs_review"]
+        review.extend(ai_review.get("unresolved", []))
+    else:
+        review = ["确认标题页姓名、学校、课程、教师和日期等信息是否完整。"
+                  if report["profile"] == "student" else
+                  "确认作者单位、作者注和 running head 是否符合投稿要求。",
+                  "确认标题层级是否判断正确。",
+                  "核对正文引用与参考文献内容、顺序、DOI 和斜体。"]
+        if table_count:
+            review.append("核对表格编号、标题、表头、注释及正文提及顺序。")
+        if figure_count:
+            review.append("核对图的编号、标题、清晰度、图例、单位和版权说明。")
+    review.extend(check["details"] for check in report.get("machine_checks", [])
+                  if check.get("status") == "needs_review")
+    unmatched = citation_check.get("unmatched_citations", [])
+    uncited = citation_check.get("uncited_references", [])
+    unparsed = citation_check.get("unparsed_reference_paragraphs", [])
+    if unmatched:
+        paragraphs = [p for item in unmatched for p in item.get("paragraphs", [])]
+        review.append(f"引文与参考文献：{len(unmatched)} 组正文作者—年份未找到明显对应条目（第 {_ranges(paragraphs)} 段）。")
+    if uncited:
+        paragraphs = [p for item in uncited for p in item.get("paragraphs", [])]
+        review.append(f"引文与参考文献：{len(uncited)} 条参考文献未找到明显正文引文（第 {_ranges(paragraphs)} 段）。")
+    if unparsed:
+        review.append(f"引文与参考文献：第 {_ranges(unparsed)} 段未识别出清晰的作者—年份，需要人工核对。")
     review.append("最后在 Word 中逐页看一遍分页和学校或期刊的特殊要求。")
     if report.get("visuals", {}).get("export_error"):
         review.append("矢量导出没有完成，需要重新处理。")
 
+    review = list(dict.fromkeys(item for item in review if item))
     return {"summary": "已生成 1 个新的 Word 格式副本；原稿和论文文字没有改动。",
             "changed": changed, "apa_sources": sources, "locations": where,
             "needs_review": review}
@@ -877,7 +1297,7 @@ def convert_legacy(source, temp, soffice):
 
 
 def format_file(source, *, output=None, profile=None, font="Times New Roman", running_head="", config=None,
-                soffice=None, export_visuals=False, save_feedback=False):
+                soffice=None, export_visuals=False, add_styles=False, save_feedback=False):
     source = Path(source).expanduser().resolve()
     if not source.is_file() or source.suffix.lower() not in {".docx", ".doc"}:
         raise ValueError("请选择现有 .docx 或 .doc 文件。加密文档、.docm 宏文件及 RTF 暂不支持。")
@@ -911,7 +1331,7 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
         doc = Document(input_docx)
         signature = content_signature(doc)
         resources = package_payloads(input_docx)
-        formatter = Formatter(doc, profile, font, running_head, config)
+        formatter = Formatter(doc, profile, font, running_head, config, add_styles=add_styles)
         formatter.run()
         if converted:
             formatter.event("review", "输入经 LibreOffice 从 .doc 转为 .docx；内容保留检查以转换后版本为基准，旧格式转换保真需人工检查。")
@@ -926,6 +1346,11 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
             raise RuntimeError("内容保留检查失败，未交付格式化文件；原稿未改动。")
         if resources != package_payloads(saved) or digest(source) != before:
             raise RuntimeError("原稿或资源保留检查失败，未交付格式化文件。")
+        machine_checks = [{"id": "content_preservation", "label": "原文与资源",
+                           "status": "passed", "details": "正文、域、公式、图片及嵌入资源通过保存后保留检查。",
+                           "source_url": None}]
+        machine_checks.extend(verify_saved_format(check, formatter))
+        citation_check = citation_reference_check(check.paragraphs, formatter.roles)
         visual_result = {}
         if visuals_api:
             try:
@@ -941,12 +1366,16 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                 visual_result["export_error"] = str(exc)
         report = {"version": VERSION, "created_at": datetime.now(timezone.utc).isoformat(),
                   "status": "FORMAT_APPLIED_REVIEW_REQUIRED", "input": str(source), "output": str(out),
-                  "profile": profile, "font": font, "source_sha256": before,
+                  "profile": profile, "font": font, "running_head": formatter.running_head or None,
+                  "reusable_styles_added": add_styles,
+                  "source_sha256": before,
                   "preservation": "passed (legacy conversion excluded)" if converted else "passed",
                   "paragraph_roles": {str(i + 1): r for i, r in formatter.roles.items()},
                   "counts": dict(formatter.counts), "events": formatter.events, "sources": SOURCES,
                   "configuration_source_bound": "source_sha256" in config,
                   "ai_review": config.get("ai_review"),
+                  "machine_checks": machine_checks,
+                  "citation_reference_check": citation_check,
                   "review_checklist": review_checklist(profile),
                   "visuals": visual_result}
         report["feedback"] = simple_feedback(report)
@@ -993,12 +1422,13 @@ def gui():
     row.pack(fill="x", pady=10)
     ttk.Label(row, text="投稿短标题（≤50 字符）").pack(side="left")
     ttk.Entry(row, textvariable=head).pack(side="left", fill="x", expand=True, padx=10)
-    vector_choice = tk.BooleanVar(value=False)
+    vector_choice, style_choice = tk.BooleanVar(value=False), tk.BooleanVar(value=False)
     ttk.Checkbutton(frame, text="同时提取图片／原始矢量，并将支持的原生图表导出 SVG", variable=vector_choice).pack(anchor="w", pady=8)
+    ttk.Checkbutton(frame, text="可选：加入 APA7 样式，方便在成品中继续写作", variable=style_choice).pack(anchor="w", pady=4)
     status = tk.StringVar(value="无需联网，无需 API Key。")
     ttk.Label(frame, textvariable=status, wraplength=620).pack(anchor="w", pady=8)
     def start():
-        values = (path.get(), mode.get(), font.get(), head.get(), vector_choice.get())
+        values = (path.get(), mode.get(), font.get(), head.get(), vector_choice.get(), style_choice.get())
         if not values[0]:
             messagebox.showerror("请选择文件", "请先选择一个 Word 文档。")
             return
@@ -1019,7 +1449,8 @@ def gui():
             messagebox.showerror("未完成", error)
         def work():
             try:
-                result = format_file(values[0], profile=values[1], font=values[2], running_head=values[3], export_visuals=values[4])
+                result = format_file(values[0], profile=values[1], font=values[2], running_head=values[3],
+                                     export_visuals=values[4], add_styles=values[5])
                 root.after(0, lambda: done(*result))
             except Exception as exc:
                 error = str(exc)
@@ -1047,6 +1478,7 @@ def main(argv=None):
     parser.add_argument("--prepare-config", type=Path, metavar="NEW_JSON", help="只读分析 .docx，生成绑定原稿的新结构配置草稿；不修改 Word")
     parser.add_argument("--inspect-visuals", action="store_true", help="只读取原生表格、图表和图片类型清单（.docx）")
     parser.add_argument("--export-visuals", action="store_true", help="同时提取原始图片／矢量，并把支持的原生图表重绘为 SVG")
+    parser.add_argument("--add-styles", action="store_true", help="可选：加入 APA7 Word 样式，方便在成品中继续写作")
     parser.add_argument("--save-feedback", action="store_true", help="另存 1 个简短 HTML 反馈；默认不生成额外报告文件")
     parser.add_argument("--sources", action="store_true", help="打印官网原文短引文与链接")
     args = parser.parse_args(argv)
@@ -1074,7 +1506,8 @@ def main(argv=None):
             raise ValueError("配置文件顶层必须是 JSON 对象。")
         out, report = format_file(args.input, output=args.output, profile=args.profile, font=args.font,
                                   running_head=args.running_head, config=config, soffice=args.soffice,
-                                  export_visuals=args.export_visuals, save_feedback=args.save_feedback)
+                                  export_visuals=args.export_visuals, add_styles=args.add_styles,
+                                  save_feedback=args.save_feedback)
         print(feedback_text(report["feedback"]))
         print(f"\nWord 副本：{out}")
         if args.save_feedback:

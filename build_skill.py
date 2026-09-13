@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import re
 from zipfile import ZipFile, ZIP_DEFLATED
 
 
@@ -15,7 +16,12 @@ def build(archive=None):
         data = (root / name).read_bytes()
         (skill / "scripts" / name).write_bytes(data)
         hashes["scripts/" + name] = hashlib.sha256(data).hexdigest()
-    (skill / "build-manifest.json").write_text(json.dumps({"engine_sha256": hashes}, indent=2), encoding="utf-8")
+    engine_text = (root / "apa7_format.py").read_text(encoding="utf-8")
+    version = re.search(r'^VERSION = "([^"]+)"$', engine_text, re.MULTILINE)
+    if not version:
+        raise RuntimeError("Could not read the formatter version")
+    manifest = {"version": version.group(1), "engine_sha256": hashes}
+    (skill / "build-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     if archive:
         archive = Path(archive)
         with ZipFile(archive, "x", ZIP_DEFLATED) as output:
