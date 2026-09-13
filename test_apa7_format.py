@@ -255,7 +255,7 @@ class FormatterRegressionTests(unittest.TestCase):
         for heading in ("改了什么", "APA 来源", "改了原稿哪里", "还要审核"):
             self.assertIn(heading, rendered)
         self.assertNotIn("source_sha256", rendered)
-        self.assertIn("原稿和论文文字没有改动", report["feedback"]["summary"])
+        self.assertIn("研究内容和统计数值没有改变", report["feedback"]["summary"])
 
     def test_heading4_without_boundary_configuration_remains_unchanged(self):
         doc = Document()

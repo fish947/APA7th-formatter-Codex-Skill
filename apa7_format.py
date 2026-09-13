@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.7.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.8.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -43,7 +43,7 @@ try:
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -93,10 +93,26 @@ SOURCES = {
     "quotations": {"title": "Quotations", "path": "citations/quotations",
                    "quote": "Format quotations of 40 words or more as block quotations:",
                    "rule": "40 词及以上原文引用用块引用，整体左缩进 0.5 英寸、双倍行距；同一引文后续段首行再缩进 0.5 英寸。"},
+    "statistics": {"title": "Numbers and Statistics Guide",
+                   "url": "https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf",
+                   "quote": "Report exact p values to two or three decimals (e.g., p = .006, p = .03).",
+                   "rule": "统计符号、运算符空格、前导零和 p 值按 APA 呈现；不自动舍入、重算或改变任何研究结果。",
+                   "checked_on": "2026-09-13"},
+    "equations": {"title": "Publication Manual: Presentation of Equations",
+                  "url": "https://www.apa.org/pubs/books/publication-manual-7th-edition-spiral",
+                  "quote": "Number all displayed equations consecutively, with the number in parentheses near the right margin of the page.",
+                  "rule": "识别原生 Word 公式和纯文本公式；安全处理公式段落版式，编号、标点、变量与公式含义仍需审核。",
+                  "checked_on": "2026-09-13"},
+    "jars": {"title": "APA Research Transparency Standards",
+             "url": "https://www.apa.org/pubs/journals/resources/standards-disclosures",
+             "quote": "Exact p values, effect sizes, and 95% confidence intervals, or an explanation of why this was not possible.",
+             "rule": "专业／投稿论文应结合具体期刊要求核对精确 p 值、效应量和置信区间。",
+             "checked_on": "2026-09-13"},
 }
 for _source in SOURCES.values():
-    _source["url"] = BASE + _source.pop("path")
-    _source["checked_on"] = "2026-09-12"
+    if "url" not in _source:
+        _source["url"] = BASE + _source.pop("path")
+    _source.setdefault("checked_on", "2026-09-12")
 
 FONTS = {"Times New Roman": 12, "Arial": 11, "Calibri": 11,
          "Georgia": 11, "Lucida Sans Unicode": 10, "Aptos": 12}
@@ -106,7 +122,7 @@ SECTION_LABELS = {"abstract", "references", "reference", "author note", "footnot
 ROLES = {"body", "title", "title_meta", "section", "abstract", "reference",
          "heading1", "heading2", "heading3", "heading4", "heading5",
          "caption_number", "caption_title", "note", "quote", "quote_continuation",
-         "appendix", "appendix_title", "keywords", "preserve"}
+         "appendix", "appendix_title", "keywords", "equation", "preserve"}
 
 APA7_PARAGRAPH_STYLES = {
     "APA7 Body": {"indent": 0.5, "left": 0, "align": WD_ALIGN_PARAGRAPH.LEFT, "bold": False, "italic": False, "keep": False},
@@ -391,6 +407,8 @@ class Formatter:
         self.cover = None
         self.applied_styles = {}
         self.add_styles = add_styles
+        self.statistics_report = None
+        self.expected_body_text = None
 
     def event(self, status, message, rule=None, location="document"):
         self.events.append({"status": status, "location": location, "message": message,
@@ -488,7 +506,11 @@ class Formatter:
             elif style.casefold().startswith(("toc ", "index ", "list ", "code", "source code")) or p._p.xpath("./w:pPr/w:numPr"):
                 role = "preserve"
                 self.event("review", "列表／目录结构保留；请确认其格式及是否需要保留。", "headings", f"p{i+1}")
-            elif p._p.xpath(".//m:oMath | .//m:oMathPara | .//w:object | .//w:pict | .//wp:anchor"):
+            elif p._p.xpath(".//m:oMathPara"):
+                role = "equation"
+            elif p._p.xpath(".//m:oMath"):
+                role = "body" if p._p.xpath(".//w:t[normalize-space()]") else "equation"
+            elif p._p.xpath(".//w:object | .//w:pict | .//wp:anchor"):
                 role = "preserve"
             elif text.startswith("Keywords:"):
                 role = "keywords"
@@ -693,6 +715,7 @@ class Formatter:
         for i, p in enumerate(self.paragraphs):
             role = self.roles[i]
             text = visible_text(p).strip()
+            original_alignment = p.paragraph_format.alignment
             if role == "preserve":
                 if text:
                     self.event("review", "此段保留原格式（特殊对象、列表或明确 preserve）。", location=f"p{i+1}")
@@ -739,6 +762,10 @@ class Formatter:
             elif role in {"quote", "quote_continuation"}:
                 paragraph_format(p, indent=0.5 if role == "quote_continuation" else 0, left=0.5)
                 self.event("review", "按已标记块引用排版；请核对引用词数、引号、出处定位及是否为同一引文的后续段。", "quotations", f"p{i+1}")
+            elif role == "equation":
+                paragraph_format(p, indent=0)
+                p.paragraph_format.alignment = original_alignment
+                self.event("review", "已识别独立公式并规范段落缩进、双倍行距和段落间距；公式编号、右侧位置、变量及标点仍需核对。", "equations", f"p{i+1}")
             if role in {"title", "section", "appendix", "appendix_title", "caption_number", "caption_title"} or role.startswith("heading"):
                 # A nil direct border overrides decorative borders inherited from
                 # built-in/custom Title styles without rewriting document styles.
@@ -864,6 +891,36 @@ class Formatter:
                 self.event("changed", "超出页边距的内嵌图片等比例缩小到正文宽度；请重新核对图中文字的物理字号。", "figures", f"image{i}")
             self.event("review", "图像原始字节保留；请检查图内 8–14 pt 无衬线文字、清晰度、坐标、图例、编号、版权说明及首次提及位置。", "figures", f"image{i}")
 
+    def statistics_and_equations(self):
+        """Apply conservative presentation fixes and record all content-sensitive checks."""
+        import apa7_statistics
+
+        self.statistics_report = apa7_statistics.format_statistics_and_equations(
+            self.doc, self.roles, self.config.get("table_roles", {}), self.profile
+        )
+        report = self.statistics_report
+        equations = report["equations"]
+        if report["expressions_found"]:
+            self.event(
+                "applied",
+                f"识别 {report['expressions_found']} 处统计表达；规范了 {len(report['safe_text_edits'])} 处安全文本格式和 "
+                f"{report['symbols_formatted']} 个统计符号的斜体／正体。统计数值未改动。",
+                "statistics",
+            )
+        if equations["native_math_paragraphs"] or equations["plain_text_formula_candidates"]:
+            self.event(
+                "applied",
+                f"识别 {equations['native_math_paragraphs']} 个含 Word 原生公式的段落和 "
+                f"{equations['plain_text_formula_candidates']} 个纯文本公式候选；原生公式内容未重写。",
+                "equations",
+            )
+        if report["issues"]:
+            self.event(
+                "review",
+                f"统计数据与公式有 {len(report['issues'])} 项需要作者确认；不会自动舍入、重算、补写或改变显著性。",
+                "statistics",
+            )
+
     def run(self):
         self.preflight()
         self.detect_roles()
@@ -874,6 +931,8 @@ class Formatter:
         self.paragraphs_format()
         self.tables()
         self.images()
+        self.statistics_and_equations()
+        self.expected_body_text = "".join(self.doc._element.body.xpath(".//w:t/text()"))
         self.event("review", "参考文献只处理已识别条目的段落格式。作者、年份、文献类型、斜体位置、DOI、排序和正文对应关系尚未验证。", "references")
         self.event("review", "标题页的必需信息、标题位置、作者间空行及投稿作者注必须检查；不根据缺失信息生成内容。", "title")
         self.event("review", "图表编号与正文 callout 不会自动重排；附录单图表例外及字母编号需要核对。", "appendices")
@@ -905,6 +964,8 @@ def review_checklist(profile):
         ("title_metadata", "标题页信息", "title", title_fields),
         ("structure", "结构与标题", "headings", ["确认标题层级和 title case", "四／五级标题在正文同段，且只缩进首行"]),
         ("references", "引用与参考文献", "references", ["核对作者、年份、文献类型、标点和斜体", "核对排序、DOI 与正文引用的对应关系"]),
+        ("statistics", "统计数据汇报", "statistics", ["核对检验统计量、自由度、精确 p 值、效应量和置信区间", "确认任何舍入、显著性和原始分析输出一致"]),
+        ("equations", "公式", "equations", ["核对公式变量、上下标、括号和标点", "核对独立公式编号顺序及编号在右侧的位置"]),
         ("tables", "表格", "tables", ["确认实际表头和必要的横线", "核对跨页、编号、标题、注释与正文首次提及顺序"]),
         ("figures", "图片与图表", "figures", ["核对编号、图题、注释、数据、单位、图例和版权", "重绘 SVG 核对缓存与数据源是否一致", "按最终插入尺寸核对图内字体和清晰度"]),
         ("render", "逐页视觉检查", "scope", ["在 Word 或渲染器中检查所有页面", "确认页码、标题页位置、分页、字体替代和图表溢出"]),
@@ -948,6 +1009,13 @@ def prepare_config(path, profile="student"):
     hierarchy_outline = [{"paragraph": i + 1, "role": formatter.roles[i], "text": visible_text(p)}
                          for i, p in enumerate(doc.paragraphs) if formatter.roles[i] in structural_roles]
     citation_review = citation_reference_check(doc.paragraphs, formatter.roles)
+    import apa7_statistics
+    statistics_review = apa7_statistics.format_statistics_and_equations(
+        doc, formatter.roles, {}, profile, apply_safe_changes=False
+    )
+    object_summary["statistical_expressions"] = statistics_review["expressions_found"]
+    object_summary["native_math_paragraphs"] = statistics_review["equations"]["native_math_paragraphs"]
+    object_summary["plain_text_formula_candidates"] = statistics_review["equations"]["plain_text_formula_candidates"]
     paragraph_ids = {p._p: i for i, p in enumerate(doc.paragraphs, 1)}
     table_ids = {t._tbl: i for i, t in enumerate(doc.tables, 1)}
     body_order = []
@@ -969,6 +1037,7 @@ def prepare_config(path, profile="student"):
                         "allowed_roles": sorted(ROLES), "paragraphs": paragraphs,
                         "tables": tables, "body_order": body_order, "object_summary": object_summary,
                         "hierarchy_outline": hierarchy_outline, "citation_reference_check": citation_review,
+                        "statistics_formula_check": statistics_review,
                         "events": formatter.events, "checklist": review_checklist(profile)}}
 
 
@@ -1010,7 +1079,7 @@ def verify_saved_format(doc, formatter):
     for index, paragraph in enumerate(doc.paragraphs):
         role = formatter.roles.get(index, "preserve")
         text = visible_text(paragraph).strip()
-        if role == "preserve" or role in {"heading4", "heading5"} or (paragraph._p.xpath(".//wp:inline") and not text):
+        if role == "preserve" or role in {"heading4", "heading5", "equation"} or (paragraph._p.xpath(".//wp:inline") and not text):
             continue
         verified_paragraphs += 1
         expected_align = WD_ALIGN_PARAGRAPH.CENTER if role in centered else WD_ALIGN_PARAGRAPH.LEFT
@@ -1159,6 +1228,8 @@ def simple_feedback(report):
     table_count = inventory.get("native_tables", 0)
     figure_count = inventory.get("native_charts", 0) + inventory.get("raster_media", 0) + inventory.get("vector_media", 0)
     citation_check = report.get("citation_reference_check") or {}
+    statistics = report.get("statistical_reporting") or {}
+    equations = statistics.get("equations") or {}
 
     changed = ["页面和正文：统一页边距、字体、双倍行距、段落间距和页码。"]
     if report.get("reusable_styles_added"):
@@ -1179,6 +1250,16 @@ def simple_feedback(report):
         changed.append(f"表格：处理了 {table_count} 个可编辑表格的对齐和边框。")
     if figure_count:
         changed.append(f"图和图表：识别了 {figure_count} 个对象；过宽图片才会等比例缩小。")
+    if statistics.get("expressions_found"):
+        changed.append(
+            f"统计数据：识别 {statistics['expressions_found']} 处统计表达，规范了 "
+            f"{len(statistics.get('safe_text_edits', []))} 处写法和 {statistics.get('symbols_formatted', 0)} 个统计符号；数值未改变。"
+        )
+    if equations.get("native_math_paragraphs") or equations.get("plain_text_formula_candidates"):
+        changed.append(
+            f"公式：识别 {equations.get('native_math_paragraphs', 0)} 个含 Word 原生公式的段落和 "
+            f"{equations.get('plain_text_formula_candidates', 0)} 个纯文本公式候选；没有重写公式内容。"
+        )
 
     where = ["全文：页面、正文和页眉格式。"]
     role_labels = {
@@ -1188,14 +1269,19 @@ def simple_feedback(report):
         "caption_number": "图表编号", "caption_title": "图表标题", "note": "图表注释",
         "abstract": "摘要", "keywords": "关键词", "quote": "块引用",
         "quote_continuation": "连续块引用", "appendix": "附录标签", "appendix_title": "附录标题",
+        "equation": "独立公式",
     }
     for role, label in role_labels.items():
         if by_role.get(role):
             where.append(f"原稿第 {_ranges(by_role[role])} 段：{label}格式。")
     if table_count:
-        where.append(f"原稿中的 {table_count} 个表格：只改表格格式，不改单元格文字。")
+        where.append(f"原稿中的 {table_count} 个表格：保留数据内容；统计表达可能只调整符号、空格和前导零。")
     if figure_count:
         where.append(f"原稿中的 {figure_count} 个图或图表：保留原始内容，仅检查尺寸和位置。")
+    if statistics.get("changed_locations"):
+        locations = "、".join(statistics["changed_locations"][:12])
+        suffix = "等位置" if len(statistics["changed_locations"]) > 12 else ""
+        where.append(f"原稿 {locations}{suffix}：统计符号、空格、前导零或公式段落格式。")
 
     source_keys = ["font", "margins", "spacing", "paragraph", "header"]
     if by_role.get("title") or by_role.get("title_meta"):
@@ -1210,6 +1296,12 @@ def simple_feedback(report):
         source_keys.append("tables")
     if figure_count:
         source_keys.append("figures")
+    if statistics.get("expressions_found"):
+        source_keys.append("statistics")
+        if report.get("profile") == "professional":
+            source_keys.append("jars")
+    if equations.get("native_math_paragraphs") or equations.get("plain_text_formula_candidates"):
+        source_keys.append("equations")
     sources = [{"title": SOURCES[key]["title"], "url": SOURCES[key]["url"],
                 "quote": SOURCES[key]["quote"]} for key in source_keys]
 
@@ -1217,8 +1309,8 @@ def simple_feedback(report):
     compliance = ai_review.get("compliance_review") or {}
     labels = {"target_requirements": "目标要求", "title_page": "标题页",
               "abstract_keywords": "摘要与关键词", "headings": "标题层级",
-              "citations_references": "引文与参考文献", "tables": "表格",
-              "figures": "图片与图表", "appendices": "附录"}
+              "citations_references": "引文与参考文献", "statistics": "统计数据",
+              "equations": "公式", "tables": "表格", "figures": "图片与图表", "appendices": "附录"}
     if compliance:
         review = [f"{labels.get(key, key)}：{item['reason']}" for key, item in compliance.items()
                   if item.get("status") == "needs_review"]
@@ -1246,12 +1338,16 @@ def simple_feedback(report):
         review.append(f"引文与参考文献：{len(uncited)} 条参考文献未找到明显正文引文（第 {_ranges(paragraphs)} 段）。")
     if unparsed:
         review.append(f"引文与参考文献：第 {_ranges(unparsed)} 段未识别出清晰的作者—年份，需要人工核对。")
+    statistic_issues = statistics.get("issues", [])
+    if statistic_issues:
+        examples = "；".join(item["message"] for item in statistic_issues[:2])
+        review.append(f"统计数据与公式：发现 {len(statistic_issues)} 项需要确认。{examples}")
     review.append("最后在 Word 中逐页看一遍分页和学校或期刊的特殊要求。")
     if report.get("visuals", {}).get("export_error"):
         review.append("矢量导出没有完成，需要重新处理。")
 
     review = list(dict.fromkeys(item for item in review if item))
-    return {"summary": "已生成 1 个新的 Word 格式副本；原稿和论文文字没有改动。",
+    return {"summary": "已生成 1 个新的 Word 格式副本；原稿、研究内容和统计数值没有改变。",
             "changed": changed, "apa_sources": sources, "locations": where,
             "needs_review": review}
 
@@ -1261,7 +1357,7 @@ def feedback_text(feedback):
     lines.extend("- " + item for item in feedback["changed"])
     lines.extend(["", "APA 来源："])
     lines.extend(f"- {item['title']}：{item['url']}\n  原文：{item['quote']}" for item in feedback["apa_sources"])
-    lines.extend(["", "改了原稿哪里：", "- 没有改论文文字，只修改下面位置的格式："])
+    lines.extend(["", "改了原稿哪里：", "- 没有改变研究内容或统计数值，只修改下面位置的安全格式："])
     lines.extend("- " + item for item in feedback["locations"])
     lines.extend(["", "还要审核："])
     lines.extend("- " + item for item in feedback["needs_review"])
@@ -1280,7 +1376,7 @@ def report_html(report):
 <h1>APA 7 简要反馈</h1><p>{esc(feedback['summary'])}</p>
 <h2>改了什么</h2><ul>{items(feedback['changed'])}</ul>
 <h2>APA 来源</h2><ul>{sources}</ul>
-<h2>改了原稿哪里</h2><p>没有改论文文字，只修改下面位置的格式：</p><ul>{items(feedback['locations'])}</ul>
+<h2>改了原稿哪里</h2><p>没有改变研究内容或统计数值，只修改下面位置的安全格式：</p><ul>{items(feedback['locations'])}</ul>
 <h2>还要审核</h2><ul>{items(feedback['needs_review'])}</ul></html>"""
 
 
@@ -1338,18 +1434,31 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
         saved = Path(tmp) / "formatted.docx"
         doc.save(saved)
         check = Document(saved)
-        # Run-in splitting may alter w:t node boundaries but not visible text.
-        before_text = "".join(x[0] or "" for x in signature[0][1])
+        # Run splitting may alter w:t boundaries. Statistical presentation may
+        # change only the allowlisted text recorded by apa7_statistics.
         after_signature = content_signature(check)
         after_text = "".join(x[0] or "" for x in after_signature[0][1])
-        if before_text != after_text or signature[1:] != after_signature[1:]:
+        if after_text != formatter.expected_body_text or signature[1:] != after_signature[1:]:
             raise RuntimeError("内容保留检查失败，未交付格式化文件；原稿未改动。")
         if resources != package_payloads(saved) or digest(source) != before:
             raise RuntimeError("原稿或资源保留检查失败，未交付格式化文件。")
         machine_checks = [{"id": "content_preservation", "label": "原文与资源",
-                           "status": "passed", "details": "正文、域、公式、图片及嵌入资源通过保存后保留检查。",
+                           "status": "passed", "details": "研究内容、统计数值、域、公式、图片及嵌入资源通过保存后保留检查；安全的统计呈现修改已单独记录。",
                            "source_url": None}]
         machine_checks.extend(verify_saved_format(check, formatter))
+        statistics_report = formatter.statistics_report or {}
+        if statistics_report.get("status") != "not_applicable":
+            machine_checks.append({
+                "id": "statistical_reporting",
+                "label": "统计数据与公式",
+                "status": statistics_report.get("status", "needs_review"),
+                "details": (
+                    f"识别 {statistics_report.get('expressions_found', 0)} 处统计表达和 "
+                    f"{statistics_report.get('equations', {}).get('native_math_paragraphs', 0)} 个含原生公式的段落；"
+                    f"{len(statistics_report.get('issues', []))} 项需确认。"
+                ),
+                "source_url": SOURCES["statistics"]["url"],
+            })
         citation_check = citation_reference_check(check.paragraphs, formatter.roles)
         visual_result = {}
         if visuals_api:
@@ -1376,6 +1485,7 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                   "ai_review": config.get("ai_review"),
                   "machine_checks": machine_checks,
                   "citation_reference_check": citation_check,
+                  "statistical_reporting": statistics_report,
                   "review_checklist": review_checklist(profile),
                   "visuals": visual_result}
         report["feedback"] = simple_feedback(report)

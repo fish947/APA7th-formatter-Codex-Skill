@@ -10,7 +10,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 def build(archive=None):
     root = Path(__file__).resolve().parent
     skill = root / "skills" / "apa7-word-formatter"
-    names = ("apa7_format.py", "apa7_visuals.py", "apa7_workflow.py", "requirements.txt")
+    names = ("apa7_format.py", "apa7_statistics.py", "apa7_visuals.py", "apa7_workflow.py", "requirements.txt")
     hashes = {}
     for name in names:
         data = (root / name).read_bytes()
@@ -26,7 +26,7 @@ def build(archive=None):
         archive = Path(archive)
         with ZipFile(archive, "x", ZIP_DEFLATED) as output:
             for path in sorted(skill.rglob("*")):
-                if path.is_file() and "__pycache__" not in path.parts:
+                if path.is_file() and "__pycache__" not in path.parts and path.name != ".DS_Store" and path.suffix != ".pyc":
                     output.write(path, Path(skill.name) / path.relative_to(skill))
         with ZipFile(archive) as verify:
             if verify.testzip():

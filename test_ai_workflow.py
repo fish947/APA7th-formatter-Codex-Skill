@@ -53,6 +53,8 @@ class AIWorkflowTests(unittest.TestCase):
             "abstract_keywords": {"status": "not_applicable", "reason": "This short fixture contains no abstract."},
             "headings": {"status": "pass", "reason": "Method and Participants form a valid two-level hierarchy."},
             "citations_references": {"status": "not_applicable", "reason": "The fixture contains no citations or references."},
+            "statistics": {"status": "not_applicable", "reason": "The fixture contains no statistical test expression."},
+            "equations": {"status": "not_applicable", "reason": "The fixture contains no native or plain-text equation."},
             "tables": {"status": "needs_review", "reason": "The second table may be a layout object rather than a data table."},
             "figures": {"status": "not_applicable", "reason": "The fixture contains no figures."},
             "appendices": {"status": "not_applicable", "reason": "The fixture contains no appendices."}}
@@ -115,6 +117,24 @@ class AIWorkflowTests(unittest.TestCase):
         config["compliance_review"]["title_page"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
         with self.assertRaisesRegex(ValueError, "不能标为不适用"):
             workflow.validate_review(self.source, config, "student")
+
+    def test_detected_statistics_and_equations_require_compliance_review(self):
+        doc = Document(self.source)
+        doc.paragraphs[2].text = "The difference was t(28) = 2.40, p = .023."
+        doc.save(self.source)
+        config = self.reviewed()
+        config["compliance_review"]["statistics"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
+        with self.assertRaisesRegex(ValueError, "统计数据审核不能标为不适用"):
+            workflow.validate_review(self.source, config, "student")
+
+        doc = Document(self.source)
+        doc.add_paragraph("The model was y = mx + b.")
+        doc.save(self.source)
+        fresh = engine.prepare_config(self.source, "student")
+        review = {key: {"status": "pass", "reason": "Synthetic evidence."} for key in workflow.COMPLIANCE_AREAS}
+        review["equations"] = {"status": "not_applicable", "reason": "Incorrect test claim."}
+        with self.assertRaisesRegex(ValueError, "公式审核不能标为不适用"):
+            workflow.validate_compliance_review({"compliance_review": review}, fresh)
 
     def test_explicit_header_count_and_matching_profile_required(self):
         config = self.reviewed()

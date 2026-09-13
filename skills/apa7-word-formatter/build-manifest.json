@@ -1,9 +1,10 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "engine_sha256": {
-    "scripts/apa7_format.py": "946c891fa9bc39f201eb53ad444a89213e1cea4c24ba3caa09d6a1e33a060b7e",
+    "scripts/apa7_format.py": "cd9961cb323c6444564a66bcebe11872438a70a930d4b58053e0271bb2663b8f",
+    "scripts/apa7_statistics.py": "f9864b00aaa3ae2165f87134213b54c653b826d0da817c444d4fd9a660900442",
     "scripts/apa7_visuals.py": "04cdc85bbed305648992f07705a98de99c9274f3a682d0c6a162b8f46b0abc1f",
-    "scripts/apa7_workflow.py": "0ccf31abe4e472e9ec09d4fb707ac1075f3ff01b919711a2e354732eb8abf094",
+    "scripts/apa7_workflow.py": "afd0f997cdec26d6faf13edcdab8cf194a56f211c19b9cdc63ffd65f707bc0d4",
     "scripts/requirements.txt": "1892adaddc14fe30bc84ff688281363de84eefb5ab1636f3e195a485c0279336"
   }
 }

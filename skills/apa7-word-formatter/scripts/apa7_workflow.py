@@ -20,6 +20,8 @@ COMPLIANCE_AREAS = {
     "abstract_keywords": "摘要与关键词",
     "headings": "文档层级、标题格式与 title case",
     "citations_references": "正文引文与参考文献",
+    "statistics": "统计数据、检验结果、效应量与置信区间",
+    "equations": "公式类型、变量、编号、标点与页面位置",
     "tables": "表格编号、标题、表头、注释与 callout",
     "figures": "图片／图表编号、标题、注释、数据与 callout",
     "appendices": "附录及附录图表编号",
@@ -85,6 +87,9 @@ def validate_compliance_review(config, fresh):
             ("suggested_abstract_items", "abstract_keywords", "文档中检测到摘要或关键词内容，摘要／关键词审核不能标为不适用。"),
             ("suggested_heading_items", "headings", "文档中检测到标题层级，标题审核不能标为不适用。"),
             ("suggested_reference_entries", "citations_references", "文档中检测到参考文献条目，引文／参考文献审核不能标为不适用。"),
+            ("statistical_expressions", "statistics", "文档中检测到统计表达，统计数据审核不能标为不适用。"),
+            ("native_math_paragraphs", "equations", "文档中检测到 Word 原生公式，公式审核不能标为不适用。"),
+            ("plain_text_formula_candidates", "equations", "文档中检测到纯文本公式候选，公式审核不能标为不适用。"),
             ("suggested_appendix_labels", "appendices", "文档中检测到附录标签，附录审核不能标为不适用。")):
         if objects.get(signal, 0) and review[area]["status"] == "not_applicable":
             raise ValueError(message)
