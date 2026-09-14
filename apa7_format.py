@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.8.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.8.1.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -28,6 +28,7 @@ import tempfile
 import threading
 from collections import Counter
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 from zipfile import ZipFile
 
 try:
@@ -37,13 +38,14 @@ try:
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
     from docx.shared import Inches, Pt, RGBColor
     from docx.text.run import Run
     from lxml import etree
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -81,6 +83,10 @@ SOURCES = {
     "citation_match": {"title": "Author-Date Citation System", "path": "citations/basic-principles/author-date",
                        "quote": "Each work cited must appear in the reference list, and each work in the reference list must be cited in the text.",
                        "rule": "正文引文与参考文献表应相互对应；本工具只做作者—年份的轻量提示，不自动增删文献。"},
+    "reference_links": {"title": "DOIs and URLs", "path": "references/dois-urls",
+                        "quote": "Present both DOIs and URLs as hyperlinks (i.e., beginning with “http://” or “https://”).",
+                        "rule": "参考文献中已有的完整 DOI／URL 在电子文档中保留为可点击链接；显示可使用普通黑色文字。",
+                        "checked_on": "2026-09-14"},
     "tables": {"title": "Table Setup", "path": "tables-figures/tables",
                "quote": "Do not use vertical borders to separate data, and do not use borders around every cell in a table.",
                "rule": "编号粗体、标题另行斜体，均位于表上方。表头居中；首列正文左齐。通常保留顶线、底线及表头下线；复杂表可有必要横线。"},
@@ -167,6 +173,8 @@ _NARRATIVE_CITATION = re.compile(
     r"\b(?P<author>[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+(?:et\s+al\.|and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|&\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)){0,4})"
     r"\s*\((?P<year>" + _YEAR + r")\)")
 _REFERENCE_YEAR = re.compile(r"\((?P<year>" + _YEAR + r")\)", re.I)
+_WEB_URL = re.compile(r"https?://[^\s<>\"“”'{}]+", re.I)
+_BARE_DOI = re.compile(r"(?<!doi\.org/)(?<![\w/])(?:doi\s*:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)", re.I)
 
 
 def digest(path: Path) -> str:
@@ -371,6 +379,159 @@ def citation_reference_check(paragraphs, roles):
             "source_url": SOURCES["citation_match"]["url"]}
 
 
+def _clean_url_candidate(raw):
+    """Remove surrounding sentence punctuation without changing displayed text."""
+    clean = raw
+    while clean.endswith((".", ",", ";", ":", "!", "?")):
+        clean = clean[:-1]
+    for opening, closing in (("(", ")"), ("[", "]")):
+        while clean.endswith(closing) and clean.count(opening) < clean.count(closing):
+            clean = clean[:-1]
+    return clean
+
+
+def _url_candidates(text):
+    for match in _WEB_URL.finditer(text):
+        target = _clean_url_candidate(match.group(0))
+        if not target:
+            continue
+        parsed = urlsplit(target)
+        if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
+            yield match.start(), match.start() + len(target), target
+
+
+def _run_fragment(source, text):
+    """Copy one plain run's properties and replace only its text content."""
+    node = copy.deepcopy(source)
+    for element in list(node):
+        if element.tag != qn("w:rPr"):
+            node.remove(element)
+    content = OxmlElement("w:t")
+    if text[:1].isspace() or text[-1:].isspace():
+        content.set(qn("xml:space"), "preserve")
+    content.text = text
+    node.append(content)
+    return node
+
+
+def _external_hyperlinks(paragraph, location):
+    records = []
+    for node in paragraph._p.xpath(".//w:hyperlink"):
+        relationship_id = node.get(qn("r:id"))
+        if not relationship_id or relationship_id not in paragraph.part.rels:
+            continue
+        relationship = paragraph.part.rels[relationship_id]
+        if relationship.reltype != RT.HYPERLINK or not relationship.is_external:
+            continue
+        records.append({
+            "location": location,
+            "text": "".join(node.xpath(".//w:t/text()")),
+            "target": relationship.target_ref,
+        })
+    return records
+
+
+def document_hyperlinks(doc):
+    """Return external body hyperlinks using targets rather than unstable rIds."""
+    records = []
+    for index, paragraph in enumerate(doc.paragraphs, 1):
+        records.extend(_external_hyperlinks(paragraph, f"p{index}"))
+    return records
+
+
+def _link_urls_in_plain_run(paragraph, run_node, location):
+    children = list(run_node)
+    if not children or any(child.tag not in {qn("w:rPr"), qn("w:t")} for child in children):
+        return []
+    text = "".join(child.text or "" for child in children if child.tag == qn("w:t"))
+    candidates = list(_url_candidates(text))
+    if not candidates:
+        return []
+    parent = run_node.getparent()
+    if parent is not paragraph._p:
+        return []
+    position = parent.index(run_node)
+    cursor, added = 0, []
+    for start, end, target in candidates:
+        if cursor < start:
+            parent.insert(position, _run_fragment(run_node, text[cursor:start]))
+            position += 1
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), paragraph.part.relate_to(target, RT.HYPERLINK, is_external=True))
+        hyperlink.set(qn("w:history"), "1")
+        hyperlink.append(_run_fragment(run_node, text[start:end]))
+        parent.insert(position, hyperlink)
+        position += 1
+        added.append({"location": location, "text": text[start:end], "target": target})
+        cursor = end
+    if cursor < len(text):
+        parent.insert(position, _run_fragment(run_node, text[cursor:]))
+    parent.remove(run_node)
+    return added
+
+
+def reference_link_check(doc, roles, apply_safe_changes=False):
+    """Create live links only from explicit URLs in confirmed reference paragraphs."""
+    references = [(index, paragraph) for index, paragraph in enumerate(doc.paragraphs)
+                  if roles.get(index) == "reference"]
+    before = [record for index, paragraph in references
+              for record in _external_hyperlinks(paragraph, f"p{index + 1}")]
+    added, protected_locations = [], []
+    for index, paragraph in references:
+        location = f"p{index + 1}"
+        if paragraph._p.xpath(".//w:instrText | .//w:fldChar | .//w:fldSimple | .//w:sdt"):
+            if list(_url_candidates(visible_text(paragraph))):
+                protected_locations.append(location)
+            continue
+        if apply_safe_changes:
+            for run_node in list(paragraph._p.xpath("./w:r")):
+                added.extend(_link_urls_in_plain_run(paragraph, run_node, location))
+
+    after = [record for index, paragraph in references
+             for record in _external_hyperlinks(paragraph, f"p{index + 1}")]
+    unlinked, bare_dois = [], []
+    for index, paragraph in references:
+        location, text = f"p{index + 1}", visible_text(paragraph)
+        linked = Counter()
+        for record in _external_hyperlinks(paragraph, location):
+            linked[record["target"]] += 1
+            for _, _, displayed_target in _url_candidates(record["text"]):
+                if displayed_target != record["target"]:
+                    linked[displayed_target] += 1
+        candidates = Counter(target for _, _, target in _url_candidates(text))
+        for target, count in (candidates - linked).items():
+            unlinked.extend({"location": location, "target": target} for _ in range(count))
+        url_ranges = [(start, end) for start, end, _ in _url_candidates(text)]
+        for match in _BARE_DOI.finditer(text):
+            if any(match.start() < end and match.end() > start for start, end in url_ranges):
+                continue
+            bare_dois.append({"location": location, "text": _clean_url_candidate(match.group(0))})
+
+    detected = len(before) + len(added) + len(unlinked) + len(bare_dois)
+    issues = []
+    if unlinked:
+        issues.append(f"{len(unlinked)} 个完整 DOI／URL 仍不是可点击链接。")
+    if bare_dois:
+        issues.append(f"{len(bare_dois)} 个 DOI 使用了非 https://doi.org/ 格式，需要核对后转换。")
+    if protected_locations:
+        issues.append("文献管理器／Word 域中的链接已保留，需在原管理器中更新。")
+    status = "not_applicable" if not detected else "needs_review" if issues else "passed"
+    return {
+        "status": status,
+        "reference_paragraphs_checked": len(references),
+        "live_links_before": len(before),
+        "links_added": added,
+        "live_links_after": len(after),
+        "linked_locations": sorted({item["location"] for item in added}),
+        "unlinked_urls": unlinked,
+        "bare_dois": bare_dois,
+        "protected_locations": sorted(set(protected_locations)),
+        "issues": issues,
+        "source_url": SOURCES["reference_links"]["url"],
+        "limitation": "Only explicit URLs in confirmed reference paragraphs are linked; missing or incorrect DOI/URL data are never invented.",
+    }
+
+
 def content_signature(doc):
     """Verify content, fields, drawings, math and anchors independently of styles."""
     root = doc._element.body
@@ -385,6 +546,18 @@ def content_signature(doc):
                        ("http://schemas.openxmlformats.org/officeDocument/2006/math", "oMath")]:
         result.append((local, [etree.tostring(e, method="c14n") for e in root.iter("{" + uri + "}" + local)]))
     return result
+
+
+def _ordered_subsequence(original, updated):
+    """True when every original record survives in order among allowed additions."""
+    position = 0
+    for record in original:
+        while position < len(updated) and updated[position] != record:
+            position += 1
+        if position == len(updated):
+            return False
+        position += 1
+    return True
 
 
 def package_payloads(path):
@@ -408,6 +581,7 @@ class Formatter:
         self.applied_styles = {}
         self.add_styles = add_styles
         self.statistics_report = None
+        self.reference_link_report = None
         self.expected_body_text = None
 
     def event(self, status, message, rule=None, location="document"):
@@ -921,6 +1095,23 @@ class Formatter:
                 "statistics",
             )
 
+    def reference_hyperlinks(self):
+        """Make explicit URLs in confirmed references live without changing text."""
+        self.reference_link_report = reference_link_check(self.doc, self.roles, apply_safe_changes=True)
+        report = self.reference_link_report
+        if report["links_added"]:
+            self.event(
+                "applied",
+                f"将参考文献中 {len(report['links_added'])} 个已有 DOI／URL 设为可点击链接；显示文字未改变。",
+                "reference_links",
+            )
+        if report["issues"]:
+            self.event(
+                "review",
+                "参考文献链接仍有需要确认的内容：" + " ".join(report["issues"]),
+                "reference_links",
+            )
+
     def run(self):
         self.preflight()
         self.detect_roles()
@@ -929,11 +1120,12 @@ class Formatter:
         if self.add_styles:
             self.reusable_styles()
         self.paragraphs_format()
+        self.reference_hyperlinks()
         self.tables()
         self.images()
         self.statistics_and_equations()
         self.expected_body_text = "".join(self.doc._element.body.xpath(".//w:t/text()"))
-        self.event("review", "参考文献只处理已识别条目的段落格式。作者、年份、文献类型、斜体位置、DOI、排序和正文对应关系尚未验证。", "references")
+        self.event("review", "参考文献只处理已识别条目的段落格式和明确 URL 的链接。作者、年份、文献类型、斜体位置、缺失 DOI、排序和正文对应关系尚未验证。", "references")
         self.event("review", "标题页的必需信息、标题位置、作者间空行及投稿作者注必须检查；不根据缺失信息生成内容。", "title")
         self.event("review", "图表编号与正文 callout 不会自动重排；附录单图表例外及字母编号需要核对。", "appendices")
 
@@ -963,7 +1155,7 @@ def review_checklist(profile):
         ("target", "目标要求", "scope", ["核对学校、课程或期刊的具体要求与例外"]),
         ("title_metadata", "标题页信息", "title", title_fields),
         ("structure", "结构与标题", "headings", ["确认标题层级和 title case", "四／五级标题在正文同段，且只缩进首行"]),
-        ("references", "引用与参考文献", "references", ["核对作者、年份、文献类型、标点和斜体", "核对排序、DOI 与正文引用的对应关系"]),
+        ("references", "引用与参考文献", "references", ["核对作者、年份、文献类型、标点和斜体", "核对排序、DOI、URL 可点击状态与正文引用的对应关系"]),
         ("statistics", "统计数据汇报", "statistics", ["核对检验统计量、自由度、精确 p 值、效应量和置信区间", "确认任何舍入、显著性和原始分析输出一致"]),
         ("equations", "公式", "equations", ["核对公式变量、上下标、括号和标点", "核对独立公式编号顺序及编号在右侧的位置"]),
         ("tables", "表格", "tables", ["确认实际表头和必要的横线", "核对跨页、编号、标题、注释与正文首次提及顺序"]),
@@ -1009,6 +1201,7 @@ def prepare_config(path, profile="student"):
     hierarchy_outline = [{"paragraph": i + 1, "role": formatter.roles[i], "text": visible_text(p)}
                          for i, p in enumerate(doc.paragraphs) if formatter.roles[i] in structural_roles]
     citation_review = citation_reference_check(doc.paragraphs, formatter.roles)
+    reference_links = reference_link_check(doc, formatter.roles, apply_safe_changes=False)
     import apa7_statistics
     statistics_review = apa7_statistics.format_statistics_and_equations(
         doc, formatter.roles, {}, profile, apply_safe_changes=False
@@ -1016,6 +1209,9 @@ def prepare_config(path, profile="student"):
     object_summary["statistical_expressions"] = statistics_review["expressions_found"]
     object_summary["native_math_paragraphs"] = statistics_review["equations"]["native_math_paragraphs"]
     object_summary["plain_text_formula_candidates"] = statistics_review["equations"]["plain_text_formula_candidates"]
+    object_summary["reference_live_links"] = reference_links["live_links_after"]
+    object_summary["reference_unlinked_urls"] = len(reference_links["unlinked_urls"])
+    object_summary["reference_bare_dois"] = len(reference_links["bare_dois"])
     paragraph_ids = {p._p: i for i, p in enumerate(doc.paragraphs, 1)}
     table_ids = {t._tbl: i for i, t in enumerate(doc.tables, 1)}
     body_order = []
@@ -1037,6 +1233,7 @@ def prepare_config(path, profile="student"):
                         "allowed_roles": sorted(ROLES), "paragraphs": paragraphs,
                         "tables": tables, "body_order": body_order, "object_summary": object_summary,
                         "hierarchy_outline": hierarchy_outline, "citation_reference_check": citation_review,
+                        "reference_link_check": reference_links,
                         "statistics_formula_check": statistics_review,
                         "events": formatter.events, "checklist": review_checklist(profile)}}
 
@@ -1228,6 +1425,7 @@ def simple_feedback(report):
     table_count = inventory.get("native_tables", 0)
     figure_count = inventory.get("native_charts", 0) + inventory.get("raster_media", 0) + inventory.get("vector_media", 0)
     citation_check = report.get("citation_reference_check") or {}
+    reference_links = report.get("reference_link_check") or {}
     statistics = report.get("statistical_reporting") or {}
     equations = statistics.get("equations") or {}
 
@@ -1246,6 +1444,8 @@ def simple_feedback(report):
         changed.append("标题：按识别出的层级设置 APA 标题样式。")
     if by_role.get("reference"):
         changed.append("参考文献：设置双倍行距和 0.5 英寸悬挂缩进。")
+    if reference_links.get("links_added"):
+        changed.append(f"参考文献链接：将 {len(reference_links['links_added'])} 个已有 DOI／URL 设为可点击链接，显示文字未改变。")
     if table_count:
         changed.append(f"表格：处理了 {table_count} 个可编辑表格的对齐和边框。")
     if figure_count:
@@ -1282,6 +1482,9 @@ def simple_feedback(report):
         locations = "、".join(statistics["changed_locations"][:12])
         suffix = "等位置" if len(statistics["changed_locations"]) > 12 else ""
         where.append(f"原稿 {locations}{suffix}：统计符号、空格、前导零或公式段落格式。")
+    if reference_links.get("linked_locations"):
+        locations = "、".join(reference_links["linked_locations"])
+        where.append(f"原稿 {locations}：已有 DOI／URL 增加可点击链接，文字未改变。")
 
     source_keys = ["font", "margins", "spacing", "paragraph", "header"]
     if by_role.get("title") or by_role.get("title_meta"):
@@ -1292,6 +1495,8 @@ def simple_feedback(report):
         source_keys.append("references")
     if citation_check.get("citations_found") or citation_check.get("reference_entries"):
         source_keys.append("citation_match")
+    if reference_links.get("status") != "not_applicable":
+        source_keys.append("reference_links")
     if table_count:
         source_keys.append("tables")
     if figure_count:
@@ -1326,7 +1531,8 @@ def simple_feedback(report):
         if figure_count:
             review.append("核对图的编号、标题、清晰度、图例、单位和版权说明。")
     review.extend(check["details"] for check in report.get("machine_checks", [])
-                  if check.get("status") == "needs_review")
+                  if check.get("status") == "needs_review"
+                  and check.get("id") not in {"reference_links", "statistical_reporting"})
     unmatched = citation_check.get("unmatched_citations", [])
     uncited = citation_check.get("uncited_references", [])
     unparsed = citation_check.get("unparsed_reference_paragraphs", [])
@@ -1338,6 +1544,8 @@ def simple_feedback(report):
         review.append(f"引文与参考文献：{len(uncited)} 条参考文献未找到明显正文引文（第 {_ranges(paragraphs)} 段）。")
     if unparsed:
         review.append(f"引文与参考文献：第 {_ranges(unparsed)} 段未识别出清晰的作者—年份，需要人工核对。")
+    if reference_links.get("issues"):
+        review.append("参考文献链接：" + " ".join(reference_links["issues"]))
     statistic_issues = statistics.get("issues", [])
     if statistic_issues:
         examples = "；".join(item["message"] for item in statistic_issues[:2])
@@ -1426,24 +1634,45 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
         input_docx = convert_legacy(source, tmp, soffice) if converted else source
         doc = Document(input_docx)
         signature = content_signature(doc)
+        source_links = document_hyperlinks(doc)
         resources = package_payloads(input_docx)
         formatter = Formatter(doc, profile, font, running_head, config, add_styles=add_styles)
         formatter.run()
+        expected_signature = content_signature(doc)
+        expected_links = document_hyperlinks(doc)
+        static_source = [item for item in signature if item[0] not in {"w:t", "w:hyperlink"}]
+        static_expected = [item for item in expected_signature if item[0] not in {"w:t", "w:hyperlink"}]
+        source_link_counts = Counter((item["location"], item["text"], item["target"]) for item in source_links)
+        expected_link_counts = Counter((item["location"], item["text"], item["target"]) for item in expected_links)
+        recorded_link_counts = Counter(
+            (item["location"], item["text"], item["target"])
+            for item in (formatter.reference_link_report or {}).get("links_added", [])
+        )
+        source_hyperlink_nodes = dict(signature)["w:hyperlink"]
+        expected_hyperlink_nodes = dict(expected_signature)["w:hyperlink"]
+        if (static_source != static_expected
+                or not _ordered_subsequence(source_hyperlink_nodes, expected_hyperlink_nodes)
+                or len(expected_hyperlink_nodes) - len(source_hyperlink_nodes) != sum(recorded_link_counts.values())
+                or expected_link_counts - source_link_counts != recorded_link_counts
+                or source_link_counts - expected_link_counts):
+            raise RuntimeError("格式处理改变了未获允许的内容结构，未交付文件；原稿未改动。")
         if converted:
             formatter.event("review", "输入经 LibreOffice 从 .doc 转为 .docx；内容保留检查以转换后版本为基准，旧格式转换保真需人工检查。")
         saved = Path(tmp) / "formatted.docx"
         doc.save(saved)
         check = Document(saved)
-        # Run splitting may alter w:t boundaries. Statistical presentation may
-        # change only the allowlisted text recorded by apa7_statistics.
+        # Run splitting may alter w:t boundaries. Statistical presentation and
+        # newly wrapped reference hyperlinks are verified against the exact
+        # in-memory document that passed the allowlist checks above.
         after_signature = content_signature(check)
         after_text = "".join(x[0] or "" for x in after_signature[0][1])
-        if after_text != formatter.expected_body_text or signature[1:] != after_signature[1:]:
+        if (after_text != formatter.expected_body_text or expected_signature != after_signature
+                or document_hyperlinks(check) != expected_links):
             raise RuntimeError("内容保留检查失败，未交付格式化文件；原稿未改动。")
         if resources != package_payloads(saved) or digest(source) != before:
             raise RuntimeError("原稿或资源保留检查失败，未交付格式化文件。")
         machine_checks = [{"id": "content_preservation", "label": "原文与资源",
-                           "status": "passed", "details": "研究内容、统计数值、域、公式、图片及嵌入资源通过保存后保留检查；安全的统计呈现修改已单独记录。",
+                           "status": "passed", "details": "研究内容、统计数值、域、公式、图片及嵌入资源通过保存后保留检查；安全的统计呈现与参考文献链接修改已单独记录。",
                            "source_url": None}]
         machine_checks.extend(verify_saved_format(check, formatter))
         statistics_report = formatter.statistics_report or {}
@@ -1458,6 +1687,19 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                     f"{len(statistics_report.get('issues', []))} 项需确认。"
                 ),
                 "source_url": SOURCES["statistics"]["url"],
+            })
+        reference_link_report = formatter.reference_link_report or {}
+        if reference_link_report.get("status") != "not_applicable":
+            machine_checks.append({
+                "id": "reference_links",
+                "label": "参考文献 DOI／URL 链接",
+                "status": reference_link_report.get("status", "needs_review"),
+                "details": (
+                    f"新增 {len(reference_link_report.get('links_added', []))} 个可点击链接；"
+                    f"仍有 {len(reference_link_report.get('unlinked_urls', []))} 个完整 URL 和 "
+                    f"{len(reference_link_report.get('bare_dois', []))} 个裸 DOI 需要确认。"
+                ),
+                "source_url": SOURCES["reference_links"]["url"],
             })
         citation_check = citation_reference_check(check.paragraphs, formatter.roles)
         visual_result = {}
@@ -1485,6 +1727,7 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                   "ai_review": config.get("ai_review"),
                   "machine_checks": machine_checks,
                   "citation_reference_check": citation_check,
+                  "reference_link_check": reference_link_report,
                   "statistical_reporting": statistics_report,
                   "review_checklist": review_checklist(profile),
                   "visuals": visual_result}

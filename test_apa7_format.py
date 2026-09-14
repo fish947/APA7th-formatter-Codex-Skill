@@ -357,6 +357,67 @@ class FormatterRegressionTests(unittest.TestCase):
         self.assertEqual(check["unmatched_citations"], [])
         self.assertEqual(check["uncited_references"], [])
 
+    def test_reference_urls_become_live_links_without_changing_displayed_text(self):
+        doc = Document()
+        doc.add_paragraph("Read more at https://example.org/body-only.")
+        doc.add_paragraph("References")
+        reference = doc.add_paragraph("Smith, J. (2024). Example. https://doi.org/10.1234/example.")
+        original_text = [apa.visible_text(paragraph) for paragraph in doc.paragraphs]
+        source = self.save(doc)
+        source_bytes = source.read_bytes()
+        draft = apa.prepare_config(source)
+        self.assertEqual(
+            [item["target"] for item in draft["_review"]["reference_link_check"]["unlinked_urls"]],
+            ["https://doi.org/10.1234/example"],
+        )
+        self.assertEqual(source.read_bytes(), source_bytes)
+        out, report = self.format(source)
+        after = Document(out)
+        self.assertEqual(source.read_bytes(), source_bytes)
+        self.assertEqual([apa.visible_text(paragraph) for paragraph in after.paragraphs], original_text)
+        links = apa.document_hyperlinks(after)
+        self.assertEqual([(item["location"], item["text"], item["target"]) for item in links], [
+            ("p3", "https://doi.org/10.1234/example", "https://doi.org/10.1234/example")
+        ])
+        link_check = report["reference_link_check"]
+        self.assertEqual(len(link_check["links_added"]), 1)
+        self.assertEqual(link_check["linked_locations"], ["p3"])
+        self.assertEqual(link_check["status"], "passed")
+        self.assertTrue(any("可点击链接" in item for item in report["feedback"]["changed"]))
+        self.assertTrue(any(item["title"] == "DOIs and URLs" for item in report["feedback"]["apa_sources"]))
+
+    def test_reference_linking_is_idempotent_and_does_not_duplicate_existing_links(self):
+        doc = Document()
+        doc.add_paragraph("References")
+        doc.add_paragraph("Smith, J. (2024). Example. https://example.org/article")
+        source = self.save(doc)
+        first, first_report = self.format(source, name="first.docx")
+        second, second_report = self.format(first, name="second.docx")
+        self.assertEqual(len(apa.document_hyperlinks(Document(first))), 1)
+        self.assertEqual(len(apa.document_hyperlinks(Document(second))), 1)
+        self.assertEqual(len(first_report["reference_link_check"]["links_added"]), 1)
+        self.assertEqual(second_report["reference_link_check"]["links_added"], [])
+        self.assertEqual(second_report["reference_link_check"]["live_links_before"], 1)
+
+    def test_bare_or_field_managed_reference_links_are_preserved_for_review(self):
+        doc = Document()
+        doc.add_paragraph("References")
+        doc.add_paragraph("Smith, J. (2024). Example. doi:10.1234/example")
+        managed = doc.add_paragraph("Brown, R. (2023). Managed entry. ")
+        field(managed, " ADDIN ZOTERO_BIBL {managed} ", "https://example.org/managed")
+        source = self.save(doc)
+        before = [apa.visible_text(paragraph) for paragraph in doc.paragraphs]
+        out, report = self.format(source)
+        after = Document(out)
+        check = report["reference_link_check"]
+        self.assertEqual([apa.visible_text(paragraph) for paragraph in after.paragraphs], before)
+        self.assertEqual(apa.document_hyperlinks(after), [])
+        self.assertEqual(len(check["bare_dois"]), 1)
+        self.assertEqual(len(check["unlinked_urls"]), 1)
+        self.assertEqual(check["protected_locations"], ["p3"])
+        self.assertEqual(check["status"], "needs_review")
+        self.assertTrue(any("文献管理器" in item for item in check["issues"]))
+
     def test_merged_and_nested_table_structure_and_format_are_preserved(self):
         doc = Document()
         table = doc.add_table(rows=3, cols=3)

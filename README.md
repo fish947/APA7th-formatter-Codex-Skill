@@ -2,7 +2,7 @@
 
 > AI understands the paper. Python formats it reliably. You receive one new Word document.
 
-Version 0.8 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
+Version 0.8.1 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
 
 [中文](#中文介绍) · [English](#english-introduction)
 
@@ -50,6 +50,7 @@ skills/apa7-word-formatter/
 | 学生／专业模式 | 按所选模式处理标题页和页眉；专业模式使用作者提供的 running head |
 | 文档层级 | 根据上下文识别标题页、摘要、关键词、正文、一级至五级标题、块引用、参考文献、图表说明和附录 |
 | 正文与参考文献 | 设置对齐、首行缩进、块引用缩进、参考文献悬挂缩进和标题层级格式 |
+| DOI／URL 超链接 | 将已识别参考文献中已有的完整 `http://`、`https://` 和 `https://doi.org/` 文字设为可点击 Word 链接；显示文字不变，不搜索或编造缺失 DOI |
 | 统计数据汇报 | 识别 *p*、*t*、*F*、*M*、*SD*、效应量等表达；在数值不变的前提下规范统计符号、运算符空格和前导零 |
 | 统计完整性提醒 | 提示 `p = .000`、异常精度、可能缺少自由度、精确 *p* 值、效应量或置信区间；不会自动计算或补写数据 |
 | 公式 | 识别 Word 原生公式和纯文本公式候选；规范已确认独立公式的段落缩进和间距，保留公式内容并检查编号、标点和页面位置 |
@@ -82,7 +83,9 @@ skills/apa7-word-formatter/
 
 “继续写作样式”不是最终排版必需功能。它只是给 Word 增加 `APA7 Body`、`APA7 Heading 1`、`APA7 Reference` 等可重复选择的样式，方便用户在已经排好的副本里继续新增内容。如果论文已经写完，这项功能没有必要开启，因此从 v0.7 起默认关闭，也不会让 Word 的样式列表变得杂乱。
 
-格式规则来自 APA 官方网站，包括 [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf)、[APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures)、[Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list) 和 [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date)。运行 `python3 apa7_format.py --sources` 可以查看项目保存的官方原文摘录和直接链接。
+格式规则来自 APA 官方网站，包括 [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls)、[Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf)、[APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures)、[Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list) 和 [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date)。运行 `python3 apa7_format.py --sources` 可以查看项目保存的官方原文摘录和直接链接。
+
+参考文献链接遵循 APA 7 的电子文档规则：完整 DOI／URL 保持可点击，但链接不必显示成蓝色下划线。工具只给原稿已经写出的完整地址增加链接，不会联网搜索 DOI，也不会修改文献管理器生成的域。
 
 统计和公式处理遵守一个简单原则：工具可以把 `P=0.032` 规范为斜体 *p* `= .032`，但不会把 `p = .000` 擅自改成 `p < .001`，也不会舍入、重算、补写效应量或改变显著性。涉及研究结论的内容只会列入“还要审核”。
 
@@ -132,7 +135,7 @@ $HOME/.agents/skills/apa7-word-formatter/
 
 如果没有说明论文类型，Skill 会先询问。之后它会分析结构、执行排版、重新检查成品并逐页查看。默认只交付一个新的 Word 副本。
 
-统计数据和公式检查默认包含在完整流程中，不需要额外开关。
+统计数据、公式和参考文献 DOI／URL 链接检查默认包含在完整流程中，不需要额外开关。
 
 #### 4. 只运行 Python
 
@@ -166,6 +169,7 @@ python3 apa7_format.py "/path/to/paper.docx" --profile student --add-styles
 
 - 学校、导师或期刊的明确要求优先于 APA 通用格式。
 - 工具不会编造作者信息、参考文献、研究数据、统计结果或公式内容。
+- 工具不会搜索、猜测或补写缺失的 DOI／URL；文献管理器域中的链接保持原状并提示复核。
 - 工具不会自动舍入或重算统计值，不会改变显著性，也不会自动重编号公式。
 - 引文匹配、统计方法、标题大小写、复杂表格、图片清晰度、版权和最终分页仍可能需要作者确认。
 - 这是 APA 7 格式与审核助手，不是 APA 官方认证工具。
@@ -217,6 +221,7 @@ The user first confirms `student` or `professional`. The default workflow is the
 | Student/professional mode | Handles the title page and headers for the selected mode; professional mode uses the author's running head |
 | Document hierarchy | Uses context to identify the title page, abstract, keywords, body, Levels 1–5 headings, block quotations, references, captions, notes, and appendices |
 | Body and references | Applies alignment, first-line indents, block-quotation indents, hanging reference indents, and heading formatting |
+| DOI/URL hyperlinks | Makes complete `http://`, `https://`, and `https://doi.org/` text in identified references clickable in Word while preserving displayed text; never searches for or invents a missing DOI |
 | Statistical reporting | Recognizes expressions such as *p*, *t*, *F*, *M*, *SD*, and effect sizes; normalizes symbols, operator spacing, and leading zeros only when the numeric value remains unchanged |
 | Reporting reminders | Flags `p = .000`, questionable precision, and possibly missing degrees of freedom, exact *p* values, effect sizes, or confidence intervals; never calculates or invents results |
 | Equations | Identifies native Word math and plain-text formula candidates; formats the paragraph layout of confirmed display equations while preserving equation content and reviewing numbering, punctuation, and placement |
@@ -249,7 +254,9 @@ The user first confirms `student` or `professional`. The default workflow is the
 
 Continued-writing styles are not required for final formatting. They only add reusable styles such as `APA7 Body`, `APA7 Heading 1`, and `APA7 Reference` to Word, so new content added later can reuse the correct formatting. If the paper is already complete, leave this option off. It is disabled by default from v0.7 to keep the Word style gallery uncluttered.
 
-Formatting rules are linked to official APA pages, including [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format), the [Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf), [APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures), [Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings), [Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables), [Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures), [Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list), and the [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date). Run `python3 apa7_format.py --sources` to view the stored short quotations and direct links.
+Formatting rules are linked to official APA pages, including [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format), [DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls), the [Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf), [APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures), [Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings), [Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables), [Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures), [Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list), and the [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date). Run `python3 apa7_format.py --sources` to view the stored short quotations and direct links.
+
+For electronic documents, complete DOI/URL text remains clickable, although APA permits either ordinary black text or the word processor's blue-underlined appearance. The formatter only links addresses already written in the manuscript; it does not search for DOIs or modify reference-manager fields.
 
 The statistics and equation formatter follows a strict boundary: it may normalize `P=0.032` to italic *p* `= .032`, but it will not silently change `p = .000` into `p < .001`, round or recompute a value, invent an effect size, or change significance. Anything that could affect the scientific result remains an author-review item.
 
@@ -299,7 +306,7 @@ Continued-writing styles:
 
 If the paper type is missing, the Skill asks for it first. It then analyzes the structure, applies the formatting, verifies the saved result, and reviews the pages. The default deliverable is one new Word copy.
 
-Statistical-reporting and equation checks are included in the default workflow; no extra switch is required.
+Statistical-reporting, equation, and reference DOI/URL link checks are included in the default workflow; no extra switch is required.
 
 #### 4. Run Python directly
 
@@ -333,6 +340,7 @@ Running Python by itself applies deterministic formatting, statistical-presentat
 
 - Specific university, instructor, or journal requirements take priority over general APA formatting.
 - The tool never invents author information, references, research data, statistical results, or equation content.
+- It never searches for, guesses, or inserts a missing DOI/URL; links inside reference-manager fields are preserved for review.
 - It never rounds or recomputes statistical values, changes significance, or automatically renumbers equations.
 - Citation matching, analysis methods, title case, complex tables, figure clarity, copyright, and final pagination may still require author review.
 - This is an APA 7 formatting and review assistant, not an official APA certification tool.

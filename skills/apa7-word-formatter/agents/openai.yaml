@@ -1,3 +1,3 @@
 interface:
   display_name: "APA 7 论文格式助手"
-  short_description: "AI 判断结构、统计和公式，Python 稳定排版，只交付一个 Word 副本"
+  short_description: "AI 判断结构、引用、统计和公式，Python 稳定排版，只交付一个 Word 副本"
