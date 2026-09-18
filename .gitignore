@@ -1,0 +1,33 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# macOS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Private manuscripts and generated review artifacts
+*.doc
+*.docx
+*.docm
+*.pdf
+*.audit.json
+*.audit.html
+*.feedback.html
+*.qa.json
+*.structure.json
+*.visuals/
+*_render/
+render_manifest.json
+
+# Local packages and build output
+*.zip
+dist/
