@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.8.1.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.11.0.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -45,7 +46,7 @@ try:
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.8.1"
+VERSION = "0.11.0"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -71,6 +72,13 @@ SOURCES = {
     "title": {"title": "Title Page Setup", "path": "paper-format/title-page",
               "quote": "Place the title three to four lines down from the top of the title page.",
               "rule": "标题居中加粗，与作者间空一双倍行。学生需作者、单位、课程、教师、日期；投稿需对应单位及作者注。"},
+    "student_title_elements": {
+        "title": "A Step-by-Step Guide for APA Style Student Papers",
+        "url": "https://www.apa.org/ed/precollege/psn/2020/09/apa-style-student-papers",
+        "quote": "Unless instructed otherwise, students should use the student title page format and include the following elements, in the order listed, on the title page:",
+        "rule": "学生标题页依次核对论文标题、作者、单位、课程、教师、截止日期和页码；学校要求优先。",
+        "checked_on": "2026-09-18",
+    },
     "headings": {"title": "Headings", "path": "paper-format/headings",
                  "quote": "Do not label headings with numbers or letters.",
                  "rule": "一级居中粗体；二级左齐粗体；三级左齐粗斜体；四级缩进粗体、五级缩进粗斜体，后两级句号后同段续正文。"},
@@ -80,6 +88,16 @@ SOURCES = {
     "references": {"title": "Reference List Setup", "path": "paper-format/reference-list",
                    "quote": "Type each reference as a single paragraph, justified to the left margin.",
                    "rule": "新页居中粗体 References；条目双倍行距、0.5 英寸悬挂缩进。排序及正文引用对应须核对，个人通信等有例外。"},
+    "reference_order": {"title": "Reference List Setup: Alphabetical Order",
+                        "url": "https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list",
+                        "quote": "Alphabetize references according to the first word of the reference (usually the last name of the first author).",
+                        "rule": "参考文献通常按第一个词（多为第一作者姓氏）的字母顺序排列；本工具只对可靠解析的拉丁字母作者条目做保守提示。",
+                        "checked_on": "2026-09-18"},
+    "same_author_date": {"title": "Citing Works With the Same Author and Date",
+                         "path": "citations/basic-principles/same-year-author",
+                         "quote": "When multiple references have an identical author (or authors) and publication year, include a lowercase letter after the year.",
+                         "rule": "完全相同的作者组合和出版年份需使用 a、b 等年份后缀，并在正文引用中保持一致。",
+                         "checked_on": "2026-09-18"},
     "citation_match": {"title": "Author-Date Citation System", "path": "citations/basic-principles/author-date",
                        "quote": "Each work cited must appear in the reference list, and each work in the reference list must be cited in the text.",
                        "rule": "正文引文与参考文献表应相互对应；本工具只做作者—年份的轻量提示，不自动增删文献。"},
@@ -124,6 +142,12 @@ FONTS = {"Times New Roman": 12, "Arial": 11, "Calibri": 11,
          "Georgia": 11, "Lucida Sans Unicode": 10, "Aptos": 12}
 CAPTION = re.compile(r"^(Table|Figure)\s+([A-Z]?\d+)\s*$", re.I)
 COMBINED_CAPTION = re.compile(r"^(Table|Figure)\s+[A-Z]?\d+[.:：\s]+\S", re.I)
+NUMBERED_CALLOUT = re.compile(
+    r"\b(?P<kind>Tables?|Figures?|Equations?)\s+"
+    r"(?P<identifiers>\(?[A-Z]?\d+\)?(?:\s*(?:,\s*(?:and\s+)?|and\s+|&\s+|to\s+|through\s+|[-–—]\s*)\(?[A-Z]?\d+\)?)*)",
+    re.I,
+)
+NUMBERED_IDENTIFIER = re.compile(r"[A-Z]?\d+", re.I)
 SECTION_LABELS = {"abstract", "references", "reference", "author note", "footnotes"}
 ROLES = {"body", "title", "title_meta", "section", "abstract", "reference",
          "heading1", "heading2", "heading3", "heading4", "heading5",
@@ -173,6 +197,13 @@ _NARRATIVE_CITATION = re.compile(
     r"\b(?P<author>[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+(?:et\s+al\.|and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|&\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)){0,4})"
     r"\s*\((?P<year>" + _YEAR + r")\)")
 _REFERENCE_YEAR = re.compile(r"\((?P<year>" + _YEAR + r")\)", re.I)
+_REFERENCE_DATE = re.compile(
+    r"\((?P<year>(?P<base>(?:1[5-9]\d{2}|20\d{2}|n\.d\.))(?P<suffix>-?[a-z])?)\)", re.I
+)
+_ANY_DOI = re.compile(
+    r"(?<![\w/])(?:https?://(?:dx\.)?doi\.org/|doi\s*:\s*)?(?P<doi>10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
+    re.I,
+)
 _WEB_URL = re.compile(r"https?://[^\s<>\"“”'{}]+", re.I)
 _BARE_DOI = re.compile(r"(?<!doi\.org/)(?<![\w/])(?:doi\s*:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)", re.I)
 
@@ -379,6 +410,577 @@ def citation_reference_check(paragraphs, roles):
             "source_url": SOURCES["citation_match"]["url"]}
 
 
+def _reference_sort_key(author):
+    """Return a conservative Latin-script key, or None when collation is uncertain."""
+    letters = [character for character in author if character.isalpha()]
+    if not letters or any("LATIN" not in unicodedata.name(character, "") for character in letters):
+        return None
+    normalized = unicodedata.normalize("NFKD", author).casefold()
+    normalized = "".join(character for character in normalized if not unicodedata.combining(character))
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+    return normalized or None
+
+
+def _canonical_doi(text):
+    match = _ANY_DOI.search(text)
+    if not match:
+        return None
+    doi = match.group("doi").rstrip(".,;:!?")
+    while doi.endswith(")") and doi.count("(") < doi.count(")"):
+        doi = doi[:-1]
+    return doi.casefold()
+
+
+def reference_quality_check(paragraphs, roles):
+    """Audit reference-list order and duplicates without moving or rewriting entries."""
+    entries, issues = [], []
+
+    def issue(code, message, records):
+        issues.append({
+            "code": code,
+            "message": message,
+            "paragraphs": [record["paragraph"] for record in records],
+            "locations": [record["location"] for record in records],
+        })
+
+    for index, paragraph in enumerate(paragraphs):
+        if roles.get(index) != "reference":
+            continue
+        text = visible_text(paragraph).strip()
+        record = {
+            "paragraph": index + 1,
+            "location": f"p{index + 1}",
+            "text": text,
+            "normalized_text": re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip().casefold(),
+            "doi": _canonical_doi(text),
+            "author": None,
+            "author_key": None,
+            "sort_key": None,
+            "base_year": None,
+            "suffix": "",
+        }
+        date = _REFERENCE_DATE.search(text)
+        if date:
+            author = text[:date.start()].strip()
+            record["author"] = author
+            record["author_key"] = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", author)).strip().casefold()
+            record["sort_key"] = _reference_sort_key(author)
+            record["base_year"] = date.group("base").casefold()
+            record["suffix"] = (date.group("suffix") or "").lstrip("-").casefold()
+        else:
+            issue(
+                "unparsed_reference",
+                f"第 {index + 1} 段未识别出清晰的作者和年份，无法检查排序或同作者同年后缀。",
+                [record],
+            )
+        entries.append(record)
+
+    by_text, by_doi = {}, {}
+    for record in entries:
+        if record["normalized_text"]:
+            by_text.setdefault(record["normalized_text"], []).append(record)
+        if record["doi"]:
+            by_doi.setdefault(record["doi"], []).append(record)
+    for records in by_text.values():
+        if len(records) > 1:
+            issue(
+                "duplicate_entry",
+                f"第 {_ranges(record['paragraph'] for record in records)} 段内容相同，可能是重复参考文献。",
+                records,
+            )
+    for doi, records in by_doi.items():
+        if len(records) > 1:
+            issue(
+                "duplicate_doi",
+                f"第 {_ranges(record['paragraph'] for record in records)} 段使用了相同 DOI（{doi}）。",
+                records,
+            )
+
+    sortable = [record for record in entries if record["sort_key"]]
+    for previous, current in zip(sortable, sortable[1:]):
+        if previous["sort_key"] > current["sort_key"]:
+            issue(
+                "alphabetical_order",
+                f"第 {previous['paragraph']} 段排在第 {current['paragraph']} 段之前，但可识别的作者字母顺序相反。",
+                [previous, current],
+            )
+
+    author_year_groups = {}
+    for record in entries:
+        if record["author_key"] and record["base_year"]:
+            author_year_groups.setdefault((record["author_key"], record["base_year"]), []).append(record)
+    repeated_groups = 0
+    for records in author_year_groups.values():
+        if len(records) < 2:
+            continue
+        repeated_groups += 1
+        expected = [chr(ord("a") + number) for number in range(len(records))]
+        actual = [record["suffix"] for record in records]
+        if actual != expected:
+            issue(
+                "same_author_year_suffix",
+                f"第 {_ranges(record['paragraph'] for record in records)} 段为同作者同年份条目，年份后缀应按参考文献表顺序连续使用 a、b 等字母。",
+                records,
+            )
+
+    status = "not_applicable" if not entries else "needs_review" if issues else "passed"
+    return {
+        "status": status,
+        "reference_entries_checked": len(entries),
+        "same_author_year_groups": repeated_groups,
+        "issues": issues,
+        "source_urls": {
+            "alphabetical_order": SOURCES["reference_order"]["url"],
+            "same_author_year": SOURCES["same_author_date"]["url"],
+        },
+        "limitation": (
+            "Conservative pattern check only. It does not move or rewrite entries, validate bibliographic facts, "
+            "classify source types, verify title capitalization or italics, collate non-Latin scripts, or prove "
+            "that same-year letters follow title order."
+        ),
+    }
+
+
+def front_matter_check(paragraphs, roles, profile, cover=None):
+    """Check whether profile-specific front-matter candidates are present; never invent fields."""
+    issues = []
+
+    def issue(code, message, paragraph_numbers=()):
+        issues.append({
+            "code": code,
+            "message": message,
+            "paragraphs": list(paragraph_numbers),
+            "locations": [f"p{number}" for number in paragraph_numbers],
+        })
+
+    if cover:
+        start, end = cover
+        cover_numbers = list(range(start + 1, end + 2))
+        nonblank_cover = [index for index in range(start, end + 1)
+                          if visible_text(paragraphs[index]).strip()]
+    else:
+        cover_numbers, nonblank_cover = [], []
+        issue("unconfirmed_title_page", "没有确认标题页范围；不会猜测或补写作者与课程／投稿信息。")
+
+    title_numbers = [index + 1 for index in nonblank_cover if roles.get(index) == "title"]
+    metadata_numbers = [index + 1 for index in nonblank_cover if roles.get(index) == "title_meta"]
+    if cover and len(title_numbers) != 1:
+        issue("title_candidate_count", "标题页需要一个明确的论文标题候选。", cover_numbers)
+
+    if cover and profile == "student" and len(metadata_numbers) < 5:
+        issue(
+            "student_title_fields",
+            "学生标题页没有识别到足够的作者、单位、课程、教师和截止日期候选行；请逐项核对。",
+            cover_numbers,
+        )
+    if cover and profile == "professional" and len(metadata_numbers) < 2:
+        issue(
+            "professional_title_fields",
+            "专业论文标题页没有识别到足够的作者和单位候选行；作者注及期刊要求仍需核对。",
+            cover_numbers,
+        )
+
+    abstract_labels = [index + 1 for index, paragraph in enumerate(paragraphs)
+                       if visible_text(paragraph).strip().casefold() == "abstract"]
+    keyword_numbers = [index + 1 for index, role in roles.items() if role == "keywords"]
+    if len(abstract_labels) > 1:
+        issue("multiple_abstract_labels", "识别到多个 Abstract 标签，需要确认哪一个属于正式摘要。", abstract_labels)
+    if keyword_numbers and not abstract_labels:
+        issue("keywords_without_abstract", "识别到关键词，但没有找到明确的 Abstract 标签。", keyword_numbers)
+
+    outside_cover_titles = []
+    for index, role in roles.items():
+        if role != "title" or (cover and cover[0] <= index <= cover[1]):
+            continue
+        outside_cover_titles.append(index + 1)
+    body_present = any(role in {"body", "heading1", "heading2", "heading3", "heading4", "heading5"}
+                       and visible_text(paragraphs[index]).strip() for index, role in roles.items())
+    if cover and body_present and not outside_cover_titles:
+        issue(
+            "repeated_title_not_identified",
+            "已确认标题页，但没有在正文首页识别到重复的论文标题；需结合分页确认。",
+        )
+
+    return {
+        "status": "needs_review" if issues else "passed",
+        "profile": profile,
+        "title_page_confirmed": bool(cover),
+        "title_page_paragraphs": cover_numbers,
+        "title_candidates": title_numbers,
+        "metadata_candidates": metadata_numbers,
+        "abstract_labels": abstract_labels,
+        "keyword_paragraphs": keyword_numbers,
+        "repeated_title_candidates": outside_cover_titles,
+        "required_title_elements": (
+            ["paper title", "author", "affiliation", "course", "instructor", "due date", "page number"]
+            if profile == "student" else
+            ["paper title", "author byline", "author-affiliation correspondence", "page number", "running head"]
+        ),
+        "issues": issues,
+        "source_urls": {
+            "title_page": SOURCES["title"]["url"],
+            "student_elements": SOURCES["student_title_elements"]["url"],
+        },
+        "limitation": (
+            "Candidate-count and label check only. It cannot prove that a line contains the correct person, "
+            "institution, course, date, author note, or journal-required wording."
+        ),
+    }
+
+
+def _identifier_parts(identifier):
+    match = re.fullmatch(r"([A-Z]?)(\d+)", identifier.upper())
+    return (match.group(1), int(match.group(2))) if match else ("", -1)
+
+
+def _expanded_identifiers(text):
+    """Read explicit lists/ranges such as 1, 2, and 4 or A1–A3."""
+    matches = list(NUMBERED_IDENTIFIER.finditer(text))
+    if not matches:
+        return []
+    identifiers = [matches[0].group(0).upper()]
+    for previous, current in zip(matches, matches[1:]):
+        current_id = current.group(0).upper()
+        connector = text[previous.end():current.start()].casefold()
+        start_prefix, start_number = _identifier_parts(previous.group(0))
+        end_prefix, end_number = _identifier_parts(current_id)
+        is_range = bool(re.search(r"(?:\bto\b|\bthrough\b|[-–—])", connector))
+        if is_range and start_prefix == end_prefix and 0 < end_number - start_number <= 100:
+            identifiers.extend(f"{start_prefix}{number}" for number in range(start_number + 1, end_number + 1))
+        else:
+            identifiers.append(current_id)
+    return identifiers
+
+
+def _paragraph_math_text(paragraph):
+    """Read normal and native-math text without rewriting the paragraph."""
+    return "".join(paragraph._p.xpath(".//w:t/text() | .//m:t/text()"))
+
+
+def numbered_object_check(doc, roles, table_roles=None):
+    """Check table, figure and equation labels/callouts without renumbering them."""
+    labels = {"table": [], "figure": [], "equation": []}
+    callouts = {"table": [], "figure": [], "equation": []}
+    issues = []
+
+    def issue(code, kind, message, *, identifiers=(), locations=()):
+        issues.append({"code": code, "kind": kind, "identifiers": list(identifiers),
+                       "locations": list(locations), "message": message})
+
+    for index, paragraph in enumerate(doc.paragraphs):
+        role = roles.get(index, "body")
+        text = visible_text(paragraph).strip()
+        location = f"p{index + 1}"
+        if role == "caption_number":
+            match = CAPTION.fullmatch(text)
+            if match:
+                kind = match.group(1).casefold()
+                labels[kind].append({"identifier": match.group(2).upper(), "paragraph": index + 1,
+                                     "location": location, "text": text})
+            else:
+                issue("invalid_caption_label", "table_or_figure",
+                      f"第 {index + 1} 段被标记为图表编号，但没有识别出独立的 Table/Figure 编号。",
+                      locations=[location])
+
+        full_text = _paragraph_math_text(paragraph).strip()
+        if role == "equation" or paragraph._p.xpath(".//m:oMathPara"):
+            number = re.search(r"\(([A-Z]?\d+)\)\s*[.,;:]?\s*$", full_text, re.I)
+            if number:
+                labels["equation"].append({"identifier": number.group(1).upper(), "paragraph": index + 1,
+                                           "location": location, "text": full_text[:180]})
+
+        if role in {"caption_number", "caption_title", "note", "reference", "title", "title_meta",
+                    "preserve", "equation"}:
+            continue
+        seen_here = set()
+        for match in NUMBERED_CALLOUT.finditer(text):
+            kind = match.group("kind").casefold().rstrip("s")
+            for identifier in _expanded_identifiers(match.group("identifiers")):
+                key = (kind, identifier)
+                if key in seen_here:
+                    continue
+                seen_here.add(key)
+                callouts[kind].append({"identifier": identifier, "paragraph": index + 1,
+                                       "location": location, "text": match.group(0)})
+
+    for kind in ("table", "figure", "equation"):
+        label_ids = [record["identifier"] for record in labels[kind]]
+        callout_ids = [record["identifier"] for record in callouts[kind]]
+        counts = Counter(label_ids)
+        for identifier, count in counts.items():
+            if count > 1:
+                locations = [record["location"] for record in labels[kind]
+                             if record["identifier"] == identifier]
+                issue("duplicate_label", kind,
+                      f"{kind.title()} {identifier} 出现了 {count} 次编号标签（{'、'.join(locations)}）。",
+                      identifiers=[identifier], locations=locations)
+
+        groups = {}
+        for identifier in label_ids:
+            prefix, number = _identifier_parts(identifier)
+            if number >= 0 and identifier not in groups.setdefault(prefix, []):
+                groups[prefix].append(identifier)
+        for prefix, identifiers in groups.items():
+            numbers = [_identifier_parts(identifier)[1] for identifier in identifiers]
+            missing = [number for number in range(1, max(numbers) + 1) if number not in numbers]
+            if missing:
+                missing_ids = [f"{prefix}{number}" for number in missing]
+                issue("sequence_gap", kind,
+                      f"{kind.title()} 编号跳过了 {', '.join(missing_ids)}；不会自动重新编号。",
+                      identifiers=missing_ids)
+            if numbers != sorted(numbers):
+                issue("label_order", kind,
+                      f"{kind.title()} 编号在文档中的顺序为 {', '.join(identifiers)}，不是递增顺序。",
+                      identifiers=identifiers,
+                      locations=[record["location"] for record in labels[kind]
+                                 if record["identifier"] in identifiers])
+
+        label_set, callout_set = set(label_ids), set(callout_ids)
+        for identifier in sorted(callout_set - label_set, key=_identifier_parts):
+            locations = sorted({record["location"] for record in callouts[kind]
+                                if record["identifier"] == identifier})
+            issue("callout_without_label", kind,
+                  f"正文提到 {kind.title()} {identifier}（{'、'.join(locations)}），但没有找到对应编号标签。",
+                  identifiers=[identifier], locations=locations)
+        for identifier in sorted(label_set - callout_set, key=_identifier_parts):
+            locations = [record["location"] for record in labels[kind]
+                         if record["identifier"] == identifier]
+            issue("label_without_callout", kind,
+                  f"{kind.title()} {identifier}（{'、'.join(locations)}）未在正文中找到明确提及。",
+                  identifiers=[identifier], locations=locations)
+
+        first_mentions = []
+        for record in callouts[kind]:
+            if record["identifier"] in label_set and record["identifier"] not in first_mentions:
+                first_mentions.append(record["identifier"])
+        mention_groups = {}
+        for identifier in first_mentions:
+            prefix, number = _identifier_parts(identifier)
+            if number >= 0:
+                mention_groups.setdefault(prefix, []).append(identifier)
+        for identifiers in mention_groups.values():
+            numbers = [_identifier_parts(identifier)[1] for identifier in identifiers]
+            if len(numbers) > 1 and numbers != sorted(numbers):
+                locations = []
+                for identifier in identifiers:
+                    locations.append(next(record["location"] for record in callouts[kind]
+                                          if record["identifier"] == identifier))
+                issue("first_mention_order", kind,
+                      f"正文首次提及 {kind.title()} 的顺序为 {', '.join(identifiers)}，需要核对编号。",
+                      identifiers=identifiers, locations=locations)
+
+    data_table_count = None if table_roles is None else sum(role == "data" for role in table_roles.values())
+    drawing_count = len(doc._element.xpath(".//wp:inline | .//wp:anchor"))
+    displayed_equation_count = len(doc._element.xpath(".//m:oMathPara"))
+    if data_table_count is not None and data_table_count > len(labels["table"]):
+        issue("data_table_without_label", "table",
+              f"已确认 {data_table_count} 个数据表，但只识别到 {len(labels['table'])} 个 Table 编号；需要核对缺失的编号和标题。")
+    elif table_roles is None and doc.tables and not labels["table"]:
+        issue("possible_table_without_label", "table",
+              f"检测到 {len(doc.tables)} 个 Word 表格，但没有识别到 Table 编号；请先判断它们是数据表还是布局表。")
+    if drawing_count and not labels["figure"]:
+        issue("possible_figure_without_label", "figure",
+              f"检测到 {drawing_count} 个内嵌或浮动图形对象，但没有识别到 Figure 编号；请判断是否属于需要图题的论文图。")
+
+    detected = sum(len(records) for records in labels.values()) + sum(len(records) for records in callouts.values())
+    detected += (data_table_count or 0) + drawing_count + displayed_equation_count
+    status = "not_applicable" if not detected and not doc.tables else "needs_review" if issues else "passed"
+    return {
+        "status": status,
+        "labels": labels,
+        "callouts": callouts,
+        "counts": {
+            kind: {"labels": len(labels[kind]), "callouts": len(callouts[kind])}
+            for kind in ("table", "figure", "equation")
+        },
+        "objects": {"top_level_tables": len(doc.tables), "confirmed_data_tables": data_table_count,
+                    "drawings": drawing_count, "displayed_equations": displayed_equation_count},
+        "issues": issues,
+        "source_urls": {kind: SOURCES[kind]["url"] for kind in ("tables", "figures", "equations")},
+        "limitation": (
+            "Pattern-based label and callout check only. It does not infer whether a drawing is a research figure, "
+            "pair every caption to an object, follow field updates, or renumber any object."
+        ),
+    }
+
+
+def caption_object_check(doc, roles, table_roles=None, cover=None):
+    """Pair top-level tables/drawings with nearby APA number, title, and optional note paragraphs."""
+    paragraph_ids = {paragraph._p: index for index, paragraph in enumerate(doc.paragraphs)}
+    table_ids = {table._tbl: index for index, table in enumerate(doc.tables, 1)}
+    items = []
+    for element in doc._element.body:
+        if element in paragraph_ids:
+            index = paragraph_ids[element]
+            drawing_count = len(element.xpath(".//wp:inline | .//wp:anchor"))
+            items.append({
+                "kind": "paragraph",
+                "paragraph": index + 1,
+                "role": roles.get(index, "body"),
+                "text": visible_text(doc.paragraphs[index]).strip(),
+                "drawing_count": drawing_count,
+            })
+        elif element in table_ids:
+            table_number = table_ids[element]
+            items.append({
+                "kind": "table",
+                "table": table_number,
+                "role": None if table_roles is None else table_roles.get(str(table_number), "data"),
+            })
+
+    issues, objects, used_caption_paragraphs = [], [], set()
+
+    def issue(code, kind, message, locations=()):
+        issues.append({"code": code, "kind": kind, "message": message, "locations": list(locations)})
+
+    def nearby_paragraphs(position, direction):
+        records = []
+        cursor = position + direction
+        while 0 <= cursor < len(items) and len(records) < 3:
+            item = items[cursor]
+            if item["kind"] == "table" or item.get("drawing_count"):
+                break
+            if item.get("text"):
+                records.append(item)
+            cursor += direction
+        return records if direction > 0 else list(reversed(records))
+
+    for position, item in enumerate(items):
+        kind = None
+        object_id = None
+        confirmed = False
+        drawing_count = 0
+        if item["kind"] == "table":
+            if item.get("role") == "preserve":
+                continue
+            kind, object_id = "table", f"table{item['table']}"
+            confirmed = item.get("role") == "data"
+        elif item.get("drawing_count"):
+            paragraph_index = item["paragraph"] - 1
+            if cover and cover[0] <= paragraph_index <= cover[1]:
+                continue
+            kind, object_id, drawing_count = "figure", f"p{item['paragraph']}", item["drawing_count"]
+        else:
+            continue
+
+        before = nearby_paragraphs(position, -1)
+        after = nearby_paragraphs(position, 1)
+        number = before[-2] if len(before) >= 2 and before[-2]["role"] == "caption_number" else None
+        title = before[-1] if before and before[-1]["role"] == "caption_title" else None
+        if not number and before and before[-1]["role"] == "caption_number":
+            number = before[-1]
+        expected_label = "Table" if kind == "table" else "Figure"
+        label_matches = bool(number and re.match(rf"^{expected_label}\s+[A-Z]?\d+\s*$", number["text"], re.I))
+        if label_matches:
+            confirmed = True
+        note = after[0] if after and after[0]["role"] == "note" else None
+
+        if number:
+            used_caption_paragraphs.add(number["paragraph"])
+        if title:
+            used_caption_paragraphs.add(title["paragraph"])
+        if note:
+            used_caption_paragraphs.add(note["paragraph"])
+
+        record = {
+            "kind": kind,
+            "object": object_id,
+            "drawing_count": drawing_count,
+            "confirmed_research_object": confirmed,
+            "number_paragraph": number["paragraph"] if number else None,
+            "title_paragraph": title["paragraph"] if title else None,
+            "note_paragraph": note["paragraph"] if note else None,
+        }
+        objects.append(record)
+
+        if not confirmed:
+            if kind == "table":
+                issue(
+                    "table_classification_required",
+                    kind,
+                    f"{object_id} 尚未确认是数据表还是布局／问卷表格；确认前不会把缺少图题当作 APA 错误。",
+                    [object_id],
+                )
+                continue
+            issue(
+                "drawing_classification_required",
+                kind,
+                f"{object_id} 含 {drawing_count} 个图形对象，但附近没有明确的 Figure 编号；请判断它是论文图还是校徽／装饰对象。",
+                [object_id],
+            )
+            continue
+        if not number or not label_matches:
+            issue(
+                "missing_or_mismatched_number",
+                kind,
+                f"{object_id} 附近没有匹配的 {expected_label} 编号。",
+                [object_id],
+            )
+        if not title:
+            issue(
+                "missing_title",
+                kind,
+                f"{object_id} 附近没有识别到独立的图表标题段落。",
+                [object_id],
+            )
+        if drawing_count > 1 and label_matches:
+            issue(
+                "multiple_drawings_one_caption",
+                kind,
+                f"{object_id} 同一段含 {drawing_count} 个图形对象并共用一个说明；请确认是否为一个组合图。",
+                [object_id],
+            )
+
+    for item in items:
+        if item.get("kind") != "paragraph" or item.get("role") not in {"caption_number", "caption_title", "note"}:
+            continue
+        if item["paragraph"] in used_caption_paragraphs:
+            continue
+        issue(
+            "orphan_caption_part",
+            "caption",
+            f"第 {item['paragraph']} 段被识别为图表说明，但没有与相邻的表格或图形对象配对。",
+            [f"p{item['paragraph']}"],
+        )
+
+    detected = len(objects) + sum(item.get("role") in {"caption_number", "caption_title", "note"} for item in items)
+    return {
+        "status": "not_applicable" if not detected else "needs_review" if issues else "passed",
+        "objects_checked": len(objects),
+        "paired_objects": sum(bool(item["number_paragraph"] and item["title_paragraph"]) for item in objects),
+        "objects": objects,
+        "issues": issues,
+        "source_urls": {"tables": SOURCES["tables"]["url"], "figures": SOURCES["figures"]["url"]},
+        "limitation": (
+            "Adjacency and role check only. It does not prove that a drawing is a research figure, that a caption "
+            "describes the correct object, or that optional notes are scientifically complete."
+        ),
+    }
+
+
+def combined_preflight_summary(**reports):
+    """Create one compact overview for AI review and user-facing workflow decisions."""
+    sections = []
+    for key, report in reports.items():
+        if not isinstance(report, dict):
+            continue
+        issues = report.get("issues", [])
+        sections.append({
+            "id": key,
+            "status": report.get("status", "needs_review"),
+            "issue_count": len(issues),
+        })
+    relevant = [section for section in sections if section["status"] != "not_applicable"]
+    needs_review = [section for section in relevant if section["status"] == "needs_review"]
+    return {
+        "status": "needs_review" if needs_review else "passed",
+        "checks_run": len(sections),
+        "relevant_checks": len(relevant),
+        "issue_count": sum(section["issue_count"] for section in sections),
+        "sections": sections,
+    }
+
+
 def _clean_url_candidate(raw):
     """Remove surrounding sentence punctuation without changing displayed text."""
     clean = raw
@@ -582,6 +1184,10 @@ class Formatter:
         self.add_styles = add_styles
         self.statistics_report = None
         self.reference_link_report = None
+        self.reference_quality_report = None
+        self.numbered_object_report = None
+        self.front_matter_report = None
+        self.caption_object_report = None
         self.expected_body_text = None
 
     def event(self, status, message, rule=None, location="document"):
@@ -1112,6 +1718,70 @@ class Formatter:
                 "reference_links",
             )
 
+    def reference_quality(self):
+        """Audit clear reference-list quality signals without changing entries."""
+        self.reference_quality_report = reference_quality_check(self.doc.paragraphs, self.roles)
+        report = self.reference_quality_report
+        if report["status"] != "not_applicable":
+            self.event(
+                "applied",
+                f"已检查 {report['reference_entries_checked']} 条参考文献的重复、字母顺序和同作者同年后缀；没有移动或改写条目。",
+                "reference_order",
+            )
+        if report["issues"]:
+            self.event(
+                "review",
+                f"参考文献质量检查发现 {len(report['issues'])} 项需要确认。",
+                "reference_order",
+            )
+
+    def numbered_objects(self):
+        """Audit labels and body callouts; never renumber document content."""
+        self.numbered_object_report = numbered_object_check(
+            self.doc, self.roles, self.config.get("table_roles")
+        )
+        report = self.numbered_object_report
+        if report["status"] != "not_applicable":
+            total_labels = sum(item["labels"] for item in report["counts"].values())
+            total_callouts = sum(item["callouts"] for item in report["counts"].values())
+            self.event(
+                "applied",
+                f"已检查 {total_labels} 个图表／公式编号和 {total_callouts} 处正文提及；没有自动重新编号。",
+                "figures",
+            )
+        if report["issues"]:
+            self.event(
+                "review",
+                f"图、表、公式的编号与正文提及有 {len(report['issues'])} 项需要核对。",
+                "figures",
+            )
+
+    def structural_audits(self):
+        """Run profile/front-matter and caption/object checks without rewriting content."""
+        self.front_matter_report = front_matter_check(
+            self.doc.paragraphs, self.roles, self.profile, self.cover
+        )
+        self.caption_object_report = caption_object_check(
+            self.doc, self.roles, self.config.get("table_roles"), self.cover
+        )
+        if self.front_matter_report["issues"]:
+            self.event(
+                "review",
+                f"标题页、摘要或关键词有 {len(self.front_matter_report['issues'])} 项需要确认。",
+                "title",
+            )
+        if self.caption_object_report["status"] != "not_applicable":
+            self.event(
+                "applied",
+                f"已尝试配对 {self.caption_object_report['objects_checked']} 个表格／图形对象与编号、标题和注释；没有移动对象。",
+                "figures",
+            )
+        if self.caption_object_report["issues"]:
+            self.event(
+                "review",
+                f"图表与说明配对有 {len(self.caption_object_report['issues'])} 项需要确认。",
+                "figures",
+            )
     def run(self):
         self.preflight()
         self.detect_roles()
@@ -1121,13 +1791,16 @@ class Formatter:
             self.reusable_styles()
         self.paragraphs_format()
         self.reference_hyperlinks()
+        self.reference_quality()
         self.tables()
         self.images()
         self.statistics_and_equations()
+        self.numbered_objects()
+        self.structural_audits()
         self.expected_body_text = "".join(self.doc._element.body.xpath(".//w:t/text()"))
-        self.event("review", "参考文献只处理已识别条目的段落格式和明确 URL 的链接。作者、年份、文献类型、斜体位置、缺失 DOI、排序和正文对应关系尚未验证。", "references")
+        self.event("review", "参考文献只处理已识别条目的段落格式、明确 URL 的链接和保守的重复／排序提示。书目事实、文献类型、标题大小写、斜体位置和缺失 DOI 仍需核对。", "references")
         self.event("review", "标题页的必需信息、标题位置、作者间空行及投稿作者注必须检查；不根据缺失信息生成内容。", "title")
-        self.event("review", "图表编号与正文 callout 不会自动重排；附录单图表例外及字母编号需要核对。", "appendices")
+        self.event("review", "附录单图表例外及字母编号仍需结合附录结构核对。", "appendices")
 
 
 def unique_output(source, explicit=None, save_feedback=False):
@@ -1202,6 +1875,10 @@ def prepare_config(path, profile="student"):
                          for i, p in enumerate(doc.paragraphs) if formatter.roles[i] in structural_roles]
     citation_review = citation_reference_check(doc.paragraphs, formatter.roles)
     reference_links = reference_link_check(doc, formatter.roles, apply_safe_changes=False)
+    reference_quality = reference_quality_check(doc.paragraphs, formatter.roles)
+    numbered_objects = numbered_object_check(doc, formatter.roles)
+    front_matter = front_matter_check(doc.paragraphs, formatter.roles, profile, formatter.cover)
+    caption_objects = caption_object_check(doc, formatter.roles, None, formatter.cover)
     import apa7_statistics
     statistics_review = apa7_statistics.format_statistics_and_equations(
         doc, formatter.roles, {}, profile, apply_safe_changes=False
@@ -1212,6 +1889,21 @@ def prepare_config(path, profile="student"):
     object_summary["reference_live_links"] = reference_links["live_links_after"]
     object_summary["reference_unlinked_urls"] = len(reference_links["unlinked_urls"])
     object_summary["reference_bare_dois"] = len(reference_links["bare_dois"])
+    object_summary["reference_quality_issues"] = len(reference_quality["issues"])
+    object_summary["numbered_table_labels"] = numbered_objects["counts"]["table"]["labels"]
+    object_summary["numbered_figure_labels"] = numbered_objects["counts"]["figure"]["labels"]
+    object_summary["numbered_equation_labels"] = numbered_objects["counts"]["equation"]["labels"]
+    object_summary["caption_object_issues"] = len(caption_objects["issues"])
+    object_summary["front_matter_issues"] = len(front_matter["issues"])
+    preflight_summary = combined_preflight_summary(
+        front_matter=front_matter,
+        citation_reference=citation_review,
+        reference_links=reference_links,
+        reference_quality=reference_quality,
+        statistics_formula=statistics_review,
+        numbered_objects=numbered_objects,
+        caption_objects=caption_objects,
+    )
     paragraph_ids = {p._p: i for i, p in enumerate(doc.paragraphs, 1)}
     table_ids = {t._tbl: i for i, t in enumerate(doc.tables, 1)}
     body_order = []
@@ -1234,7 +1926,12 @@ def prepare_config(path, profile="student"):
                         "tables": tables, "body_order": body_order, "object_summary": object_summary,
                         "hierarchy_outline": hierarchy_outline, "citation_reference_check": citation_review,
                         "reference_link_check": reference_links,
+                        "reference_quality_check": reference_quality,
+                        "front_matter_check": front_matter,
+                        "numbered_object_check": numbered_objects,
+                        "caption_object_check": caption_objects,
                         "statistics_formula_check": statistics_review,
+                        "preflight_summary": preflight_summary,
                         "events": formatter.events, "checklist": review_checklist(profile)}}
 
 
@@ -1426,6 +2123,11 @@ def simple_feedback(report):
     figure_count = inventory.get("native_charts", 0) + inventory.get("raster_media", 0) + inventory.get("vector_media", 0)
     citation_check = report.get("citation_reference_check") or {}
     reference_links = report.get("reference_link_check") or {}
+    reference_quality = report.get("reference_quality_check") or {}
+    front_matter = report.get("front_matter_check") or {}
+    numbered = report.get("numbered_object_check") or {}
+    caption_objects = report.get("caption_object_check") or {}
+    preflight = report.get("preflight_summary") or {}
     statistics = report.get("statistical_reporting") or {}
     equations = statistics.get("equations") or {}
 
@@ -1446,6 +2148,10 @@ def simple_feedback(report):
         changed.append("参考文献：设置双倍行距和 0.5 英寸悬挂缩进。")
     if reference_links.get("links_added"):
         changed.append(f"参考文献链接：将 {len(reference_links['links_added'])} 个已有 DOI／URL 设为可点击链接，显示文字未改变。")
+    if reference_quality.get("status") != "not_applicable":
+        changed.append(
+            f"参考文献质量：检查了 {reference_quality.get('reference_entries_checked', 0)} 条文献的重复、字母顺序和同作者同年后缀；没有移动或改写条目。"
+        )
     if table_count:
         changed.append(f"表格：处理了 {table_count} 个可编辑表格的对齐和边框。")
     if figure_count:
@@ -1459,6 +2165,16 @@ def simple_feedback(report):
         changed.append(
             f"公式：识别 {equations.get('native_math_paragraphs', 0)} 个含 Word 原生公式的段落和 "
             f"{equations.get('plain_text_formula_candidates', 0)} 个纯文本公式候选；没有重写公式内容。"
+        )
+    if numbered.get("status") != "not_applicable":
+        total_labels = sum(item.get("labels", 0) for item in numbered.get("counts", {}).values())
+        total_callouts = sum(item.get("callouts", 0) for item in numbered.get("counts", {}).values())
+        changed.append(
+            f"编号检查：核对了 {total_labels} 个图表／公式编号和 {total_callouts} 处正文提及；没有自动重新编号。"
+        )
+    if preflight:
+        changed.append(
+            f"完整预检：一次检查标题页、引用、参考文献、统计、公式和图表，共有 {preflight.get('issue_count', 0)} 项需要人工判断。"
         )
 
     where = ["全文：页面、正文和页眉格式。"]
@@ -1497,6 +2213,14 @@ def simple_feedback(report):
         source_keys.append("citation_match")
     if reference_links.get("status") != "not_applicable":
         source_keys.append("reference_links")
+    if reference_quality.get("status") != "not_applicable":
+        source_keys.append("reference_order")
+        if reference_quality.get("same_author_year_groups"):
+            source_keys.append("same_author_date")
+    if front_matter:
+        source_keys.append("title")
+        if report.get("profile") == "student":
+            source_keys.append("student_title_elements")
     if table_count:
         source_keys.append("tables")
     if figure_count:
@@ -1507,6 +2231,19 @@ def simple_feedback(report):
             source_keys.append("jars")
     if equations.get("native_math_paragraphs") or equations.get("plain_text_formula_candidates"):
         source_keys.append("equations")
+    numbered_counts = numbered.get("counts", {})
+    if any(numbered_counts.get("table", {}).values()) and "tables" not in source_keys:
+        source_keys.append("tables")
+    if any(numbered_counts.get("figure", {}).values()) and "figures" not in source_keys:
+        source_keys.append("figures")
+    if any(numbered_counts.get("equation", {}).values()) and "equations" not in source_keys:
+        source_keys.append("equations")
+    if caption_objects.get("status") != "not_applicable":
+        if any(item.get("kind") == "table" for item in caption_objects.get("objects", [])) and "tables" not in source_keys:
+            source_keys.append("tables")
+        if any(item.get("kind") == "figure" for item in caption_objects.get("objects", [])) and "figures" not in source_keys:
+            source_keys.append("figures")
+    source_keys = list(dict.fromkeys(source_keys))
     sources = [{"title": SOURCES[key]["title"], "url": SOURCES[key]["url"],
                 "quote": SOURCES[key]["quote"]} for key in source_keys]
 
@@ -1532,7 +2269,9 @@ def simple_feedback(report):
             review.append("核对图的编号、标题、清晰度、图例、单位和版权说明。")
     review.extend(check["details"] for check in report.get("machine_checks", [])
                   if check.get("status") == "needs_review"
-                  and check.get("id") not in {"reference_links", "statistical_reporting"})
+                  and check.get("id") not in {"reference_links", "statistical_reporting",
+                                               "reference_quality", "numbered_object_references",
+                                               "front_matter", "caption_object_pairing"})
     unmatched = citation_check.get("unmatched_citations", [])
     uncited = citation_check.get("uncited_references", [])
     unparsed = citation_check.get("unparsed_reference_paragraphs", [])
@@ -1542,14 +2281,34 @@ def simple_feedback(report):
     if uncited:
         paragraphs = [p for item in uncited for p in item.get("paragraphs", [])]
         review.append(f"引文与参考文献：{len(uncited)} 条参考文献未找到明显正文引文（第 {_ranges(paragraphs)} 段）。")
-    if unparsed:
+    if unparsed and reference_quality.get("status") == "not_applicable":
         review.append(f"引文与参考文献：第 {_ranges(unparsed)} 段未识别出清晰的作者—年份，需要人工核对。")
     if reference_links.get("issues"):
         review.append("参考文献链接：" + " ".join(reference_links["issues"]))
+    reference_issues = reference_quality.get("issues", [])
+    if reference_issues:
+        examples = "；".join(item["message"] for item in reference_issues[:2])
+        suffix = "；其余问题请在 Word 中核对。" if len(reference_issues) > 2 else ""
+        review.append(f"参考文献质量：发现 {len(reference_issues)} 项需要确认。{examples}{suffix}")
+    front_issues = front_matter.get("issues", [])
+    if front_issues:
+        examples = "；".join(item["message"] for item in front_issues[:2])
+        suffix = "；其余项目请结合标题页和分页核对。" if len(front_issues) > 2 else ""
+        review.append(f"标题页与前置页：发现 {len(front_issues)} 项需要确认。{examples}{suffix}")
     statistic_issues = statistics.get("issues", [])
     if statistic_issues:
         examples = "；".join(item["message"] for item in statistic_issues[:2])
         review.append(f"统计数据与公式：发现 {len(statistic_issues)} 项需要确认。{examples}")
+    numbered_issues = numbered.get("issues", [])
+    if numbered_issues:
+        examples = "；".join(item["message"] for item in numbered_issues[:2])
+        suffix = "；其余问题请结合 Word 页面核对。" if len(numbered_issues) > 2 else ""
+        review.append(f"图表与公式编号：发现 {len(numbered_issues)} 项需要确认。{examples}{suffix}")
+    caption_issues = caption_objects.get("issues", [])
+    if caption_issues:
+        examples = "；".join(item["message"] for item in caption_issues[:2])
+        suffix = "；其余对象请结合 Word 页面核对。" if len(caption_issues) > 2 else ""
+        review.append(f"图表与说明：发现 {len(caption_issues)} 项需要确认。{examples}{suffix}")
     review.append("最后在 Word 中逐页看一遍分页和学校或期刊的特殊要求。")
     if report.get("visuals", {}).get("export_error"):
         review.append("矢量导出没有完成，需要重新处理。")
@@ -1701,7 +2460,74 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                 ),
                 "source_url": SOURCES["reference_links"]["url"],
             })
+        reference_quality_report = formatter.reference_quality_report or reference_quality_check(
+            check.paragraphs, formatter.roles
+        )
+        if reference_quality_report.get("status") != "not_applicable":
+            machine_checks.append({
+                "id": "reference_quality",
+                "label": "参考文献质量",
+                "status": reference_quality_report["status"],
+                "details": (
+                    f"检查 {reference_quality_report.get('reference_entries_checked', 0)} 条参考文献；"
+                    f"{len(reference_quality_report.get('issues', []))} 项需确认，不会自动移动或改写条目。"
+                ),
+                "source_url": SOURCES["reference_order"]["url"],
+            })
+        numbered_report = numbered_object_check(
+            check, formatter.roles, formatter.config.get("table_roles")
+        )
+        if numbered_report.get("status") != "not_applicable":
+            total_labels = sum(item["labels"] for item in numbered_report["counts"].values())
+            total_callouts = sum(item["callouts"] for item in numbered_report["counts"].values())
+            machine_checks.append({
+                "id": "numbered_object_references",
+                "label": "图表与公式编号",
+                "status": numbered_report["status"],
+                "details": (
+                    f"检查 {total_labels} 个编号标签和 {total_callouts} 处正文提及；"
+                    f"{len(numbered_report['issues'])} 项需确认，不会自动重新编号。"
+                ),
+                "source_url": SOURCES["figures"]["url"],
+            })
+        front_matter_report = formatter.front_matter_report or front_matter_check(
+            check.paragraphs, formatter.roles, profile, formatter.cover
+        )
+        machine_checks.append({
+            "id": "front_matter",
+            "label": "标题页、摘要与关键词",
+            "status": front_matter_report["status"],
+            "details": (
+                f"标题页{'已确认' if front_matter_report['title_page_confirmed'] else '未确认'}；"
+                f"{len(front_matter_report['issues'])} 项需确认，不会补写缺失信息。"
+            ),
+            "source_url": SOURCES["title"]["url"],
+        })
+        caption_object_report = formatter.caption_object_report or caption_object_check(
+            check, formatter.roles, formatter.config.get("table_roles"), formatter.cover
+        )
+        if caption_object_report.get("status") != "not_applicable":
+            machine_checks.append({
+                "id": "caption_object_pairing",
+                "label": "图表与说明配对",
+                "status": caption_object_report["status"],
+                "details": (
+                    f"检查 {caption_object_report['objects_checked']} 个表格／图形对象；"
+                    f"配对 {caption_object_report['paired_objects']} 个，"
+                    f"{len(caption_object_report['issues'])} 项需确认。"
+                ),
+                "source_url": SOURCES["figures"]["url"],
+            })
         citation_check = citation_reference_check(check.paragraphs, formatter.roles)
+        preflight_summary = combined_preflight_summary(
+            front_matter=front_matter_report,
+            citation_reference=citation_check,
+            reference_links=reference_link_report,
+            reference_quality=reference_quality_report,
+            statistics_formula=statistics_report,
+            numbered_objects=numbered_report,
+            caption_objects=caption_object_report,
+        )
         visual_result = {}
         if visuals_api:
             try:
@@ -1728,6 +2554,11 @@ def format_file(source, *, output=None, profile=None, font="Times New Roman", ru
                   "machine_checks": machine_checks,
                   "citation_reference_check": citation_check,
                   "reference_link_check": reference_link_report,
+                  "reference_quality_check": reference_quality_report,
+                  "front_matter_check": front_matter_report,
+                  "numbered_object_check": numbered_report,
+                  "caption_object_check": caption_object_report,
+                  "preflight_summary": preflight_summary,
                   "statistical_reporting": statistics_report,
                   "review_checklist": review_checklist(profile),
                   "visuals": visual_result}
