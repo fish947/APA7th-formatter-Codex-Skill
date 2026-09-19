@@ -1,6 +1,6 @@
 ---
 name: apa7-word-formatter
-description: "Format existing Word papers to APA 7 using AI-assisted structure classification, preservation-checked Python edits, unified front-matter, reference, statistical, equation, caption/object and numbering checks, and page-by-page visual review. Supports student and professional papers and optional vector export. Use for APA Word formatting, not for writing research claims or certifying full publication compliance."
+description: "Format existing Word papers to APA 7 or generate APA tables and figures from author-supplied structured results, using AI-assisted review, preservation-checked Python edits, statistical/equation checks, and page-by-page visual QA. Supports student and professional papers. Not for writing research claims or certifying full publication compliance."
 ---
 
 # APA 7 Word Formatter
@@ -46,6 +46,10 @@ When requested, add `--export-visuals` to the reviewed apply command. Inspect th
 - Unsupported graphs, missing caches, multiple axes, error bars, trendlines and smooth curves: preserve and report. Do not remove features to make export succeed.
 
 Exports remain separate from the original editable Word objects. Do not automatically replace an original figure with a reconstructed one.
+
+## Results to APA tables and figures
+
+When the user supplies CSV/JSON results and asks to create tables or figures, read [results generation](references/results-generation.md) and use `scripts/apa7_results.py`. This is a separate authoring mode: it formats confirmed values and can draw bar, line and scatter figures from supplied data, but does not run statistical tests, infer missing values, alter precision or convert screenshots into true vectors. Render and inspect every generated Word page before delivery.
 
 ## Optional continued-writing styles
 

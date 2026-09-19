@@ -2,7 +2,7 @@
 
 > AI understands the paper. Python formats it reliably. You receive one new Word document.
 
-Version 0.13.0 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
+Version 0.14.0 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
 
 [中文](#中文介绍) · [English](#english-introduction)
 
@@ -23,6 +23,7 @@ APA 7 Word Formatter 因此采用 AI Skill + Python 的组合：AI 负责阅读�
 ```text
 apa7-word-formatter/
 ├── apa7_format.py               主程序，也是版本号的唯一来源
+├── apa7_results.py              从结构化统计结果生成 APA 表格和图
 ├── apa7_statistics.py           统计表达和公式检查
 ├── apa7_visuals.py              图片、图表和矢量导出
 ├── apa7_workflow.py             AI 审核与逐页检查流程
@@ -37,7 +38,7 @@ apa7-word-formatter/
 └── .github/workflows/tests.yml  GitHub 自动测试
 ```
 
-根目录的四个 `apa7_*.py` 和 `tools/apa7_benchmark.py` 是唯一维护来源。`skills/.../scripts/` 是构建生成的安装副本，不需要手动修改；运行 `python3 build_skill.py` 会同步脚本并更新版本与完整性哈希。
+根目录的五个 `apa7_*.py` 和 `tools/apa7_benchmark.py` 是唯一维护来源。`skills/.../scripts/` 是构建生成的安装副本，不需要手动修改；运行 `python3 build_skill.py` 会同步脚本并更新版本与完整性哈希。
 
 ### 这个 Skill 能做什么
 
@@ -84,10 +85,13 @@ apa7-word-formatter/
 | 导出矢量图 | 想单独取出原有矢量图，或把数据完整的简单柱形图、折线图和散点图另存为 SVG | 关闭 |
 | 继续写作样式 | 排版后还要继续写论文，想在 Word 中直接选择已经设好的正文、标题或参考文献样式 | 关闭 |
 | 保存网页版说明 | 想把修改说明另外保存成一个可打开的网页文件 | 关闭 |
+| 从统计结果生成表格和图 | 把 CSV／JSON 中已经确认的数据做成 APA 表格，或从原始绘图数据生成柱形图、折线图和散点图；不会重算统计结果 | 按需 |
 | 只检查不修改 | 想先知道论文有什么格式问题，不马上生成排版成品 | 按需 |
 | 更换字体 | 学校、导师或期刊指定了另一种 APA 允许的字体 | 按需 |
 
 “继续写作样式”不是最终排版必需功能。它的作用很简单：如果你还要继续写论文，可以在 Word 里直接选择已经设置好的正文、标题和参考文献格式。如果论文已经写完，就不用开启。
+
+“从统计结果生成表格和图”使用作者提供的结构化数据：它会制作表格编号、斜体标题、简洁横线、表注、重复表头和数字列对齐，也能从数据生成清晰的柱形图、折线图或散点图。Word 中使用高分辨率预览图；需要时可另外导出由原始数据绘制的 SVG。工具不会运行统计检验、补写缺失结果、改变小数精度或把截图假装成矢量图。
 
 格式规则来自 APA 官方网站，包括 [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[学生论文设置指南](https://www.apa.org/ed/precollege/psn/2020/09/apa-style-student-papers)、[DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls)、[Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf)、[APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures)、[Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list)、[Citing Works With the Same Author and Date](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/same-year-author) 和 [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date)。运行 `python3 apa7_format.py --sources` 可以查看项目保存的官方原文摘录和直接链接。
 
@@ -208,7 +212,7 @@ python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --c
 python3 tools/apa7_benchmark.py inspect-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus --profile professional --output-dir benchmark/private/corpus-inspection
 ```
 
-当前基准库已登记并校验 **20 份 CC BY 4.0 Word 学术文档**。20 份文档都已完成只读结构扫描，共覆盖 5,532 个段落、44 个表格、173 个图形对象、65 个含原生公式的段落和 162 个统计表达。这里的“结构扫描通过”表示工具能安全读取并建立审核草稿，不表示每篇论文已经完成 APA 7 排版和逐页审核；目前有 2 份文档完成了完整排版、渲染和逐页复核。20 份适合作为第一阶段稳定性基线，后续仍应继续补充不同学校模板、语言、学科和复杂版式。
+当前基准库已登记并校验 **20 份 CC BY 4.0 Word 学术文档**。20 份文档都已完成只读结构扫描，共覆盖 5,532 个段落、44 个表格、173 个图形对象、65 个含原生公式的段落和 162 个统计表达。这里的“结构扫描通过”表示工具能安全读取并建立审核草稿，不表示每篇论文已经完成 APA 7 排版和逐页审核。目前已有 6 份文档完成完整排版、渲染和逐页复核：其中 4 份通过全部门槛，另外 2 份发现的版面问题已用于建立回归测试。20 份适合作为第一阶段稳定性基线，后续仍应继续补充不同学校模板、语言、学科和复杂版式。
 
 发现问题后，先制作不含私人内容的最小合成文档和失败测试，再修改代码。这样同一问题以后不会悄悄回来。详细流程见 Skill 中的 `references/benchmarking.md`。
 
@@ -240,6 +244,7 @@ Before formatting, the user chooses `student` or `professional`. By default, the
 ```text
 apa7-word-formatter/
 ├── apa7_format.py               Main program and single version source
+├── apa7_results.py              APA tables and figures from structured results
 ├── apa7_statistics.py           Statistical and equation checks
 ├── apa7_visuals.py              Visual inventory and vector export
 ├── apa7_workflow.py             AI review and page-QA workflow
@@ -254,7 +259,7 @@ apa7-word-formatter/
 └── .github/workflows/tests.yml  GitHub test workflow
 ```
 
-The four root `apa7_*.py` files and `tools/apa7_benchmark.py` are the maintained code sources. Files under `skills/.../scripts/` are generated installation copies. Run `python3 build_skill.py` to synchronize them and refresh the version and integrity hashes.
+The five root `apa7_*.py` files and `tools/apa7_benchmark.py` are the maintained code sources. Files under `skills/.../scripts/` are generated installation copies. Run `python3 build_skill.py` to synchronize them and refresh the version and integrity hashes.
 
 ### What the Skill Can Do
 
@@ -301,10 +306,13 @@ First choose `student` or `professional`. The AI identifies the parts of the pap
 | Vector export | Extract an existing vector image or save a supported simple bar, line, or scatter chart as SVG when complete chart data are available | Off |
 | Continued-writing styles | Keep writing in the formatted document and select ready-made Word styles for body text, headings, references, or captions | Off |
 | Web-page report | Save the short change report as a separate HTML file | Off |
+| Results to APA tables and figures | Turn confirmed CSV/JSON values into APA tables, or create bar, line, and scatter figures from supplied plotting data without recalculating results | On request |
 | Inspect without editing | See the paper's structure and likely problems before creating a formatted copy | On request |
 | Change the font | Use another APA-supported font required by a university, instructor, or journal | On request |
 
 Continued-writing styles are not required for final formatting. They only add reusable styles such as `APA7 Body`, `APA7 Heading 1`, and `APA7 Reference` to Word, so new content added later can reuse the correct formatting. If the paper is already complete, leave this option off.
+
+The results generator uses structured data supplied by the author. It creates table/figure numbers, italic titles, minimal table rules, notes, repeating headers, and aligned numeric columns. It can also draw bar, line, and scatter figures, inserting a high-resolution preview into Word and optionally exporting a genuine data-derived SVG. It does not perform statistical tests, fill missing results, change precision, or claim that a screenshot has become a vector graphic.
 
 Formatting rules are linked to official APA pages, including [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format), the [student-paper setup guide](https://www.apa.org/ed/precollege/psn/2020/09/apa-style-student-papers), [DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls), the [Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf), [APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures), [Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings), [Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables), [Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures), [Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list), [Citing Works With the Same Author and Date](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/same-year-author), and the [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date). Run `python3 apa7_format.py --sources` to view the stored short quotations and direct links.
 
@@ -362,6 +370,10 @@ Continued-writing styles:
 
 > Use $apa7-word-formatter to format this document as an APA 7 student paper and add reusable APA7 Word styles for continued writing.
 
+Results to APA tables and figures:
+
+> Use $apa7-word-formatter to turn this CSV or JSON results file into APA 7 tables and figures. Preserve every reported value and export data-derived SVG figures.
+
 If the paper type is missing, the Skill asks for it first. It then analyzes the structure, applies the formatting, verifies the saved result, and reviews the pages. The default deliverable is one new Word copy.
 
 Front-matter, statistical-reporting, equation, table/figure/equation numbering, caption-object pairing, reference-quality, and DOI/URL checks are included in one default preflight; no extra switch is required.
@@ -391,6 +403,20 @@ Optionally add reusable Word styles when the formatted copy will still be edited
 ```sh
 python3 apa7_format.py "/path/to/paper.docx" --profile student --add-styles
 ```
+
+Create an APA table directly from CSV:
+
+```sh
+python3 apa7_results.py results.csv --output results_APA7.docx --table-title "Descriptive Statistics by Condition"
+```
+
+Create several tables and data-derived figures from JSON, with optional SVG export:
+
+```sh
+python3 apa7_results.py results.json --output results_APA7.docx --export-svg results_svg
+```
+
+The JSON schema and a small example are documented in `skills/apa7-word-formatter/references/results-generation.md`.
 
 Running Python by itself applies deterministic formatting, statistical-presentation normalization, equation detection, and preservation checks. It does not replace the AI's judgment about hierarchy, analysis methods, equation meaning, object purpose, or page appearance.
 
@@ -425,7 +451,7 @@ Inspect the complete corpus and create a compact aggregate report with one comma
 python3 tools/apa7_benchmark.py inspect-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus --profile professional --output-dir benchmark/private/corpus-inspection
 ```
 
-The current corpus registers and verifies **20 CC BY 4.0 scholarly Word documents**. All 20 have completed read-only structure inspection, covering 5,532 paragraphs, 44 tables, 173 drawing objects, 65 paragraphs containing native equations, and 162 statistical expressions. “Structure inspection passed” means the tool could safely read the document and prepare a review draft; it does not mean every paper has completed APA 7 formatting and page-by-page review. Two documents have completed the full format, render, and page-review cycle. Twenty documents are a useful first stability baseline, while future releases should continue adding university templates, languages, disciplines, and difficult layouts.
+The current corpus registers and verifies **20 CC BY 4.0 scholarly Word documents**. All 20 have completed read-only structure inspection, covering 5,532 paragraphs, 44 tables, 173 drawing objects, 65 paragraphs containing native equations, and 162 statistical expressions. “Structure inspection passed” means the tool could safely read the document and prepare a review draft; it does not mean every paper has completed APA 7 formatting and page-by-page review. Six documents have now completed the full format, render, and page-review cycle: four passed every gate, while layout issues found in two earlier documents were converted into regression tests. Twenty documents are a useful first stability baseline, while future releases should continue adding university templates, languages, disciplines, and difficult layouts.
 
 When a real paper reveals a defect, reduce it to a fictional minimal DOCX, add a failing regression test, and only then change the formatter. See `references/benchmarking.md` in the Skill package for the complete workflow.
 

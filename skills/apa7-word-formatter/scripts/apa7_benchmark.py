@@ -224,6 +224,132 @@ def verify_public_sources(registry_path, corpus_dir):
     }
 
 
+def corpus_inspection_markdown(report):
+    summary = report["summary"]
+    lines = [
+        "# APA7 Public Corpus Inspection",
+        "",
+        f"Overall: **{report['status'].upper()}**",
+        "",
+        (
+            f"Documents: {summary['documents']} | Inspected: {summary['inspected']} | "
+            f"Failed: {summary['failed']} | Profile: {report['profile']}"
+        ),
+        "",
+        (
+            f"Paragraphs: {summary['paragraphs']} | Tables: {summary['tables']} | "
+            f"Drawings: {summary['drawing_objects']} | Native charts: {summary['native_charts']} | "
+            f"Native-equation paragraphs: {summary['native_math_paragraphs']} | "
+            f"Statistical expressions: {summary['statistical_expressions']}"
+        ),
+        "",
+        "| Source | Paragraphs | Tables | Drawings | Equations | Statistics | Preflight issues | Result |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for item in report["documents"]:
+        lines.append(
+            f"| {item['id']} | {item.get('paragraphs', 0)} | {item.get('tables', 0)} | "
+            f"{item.get('drawing_objects', 0)} | {item.get('native_math_paragraphs', 0)} | "
+            f"{item.get('statistical_expressions', 0)} | {item.get('preflight_issue_count', 0)} | "
+            f"{item['status']} |"
+        )
+    lines.extend([
+        "",
+        "This is a read-only ingestion and structure-inspection result. It is not proof that every document has completed APA formatting or page-by-page visual review.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def inspect_public_sources(registry_path, corpus_dir, profile, output_dir):
+    """Verify and inspect every registered DOCX without formatting or copying it."""
+    if profile not in {"student", "professional"}:
+        raise ValueError("profile 必须是 student 或 professional。")
+    output_dir = Path(output_dir).expanduser().resolve()
+    if output_dir.exists() or output_dir.is_symlink():
+        raise ValueError("整库扫描输出目录必须是新目录，不能覆盖旧结果。")
+    registry_path = Path(registry_path).expanduser().resolve()
+    corpus_dir = Path(corpus_dir).expanduser().resolve()
+    verification = verify_public_sources(registry_path, corpus_dir)
+    if verification["status"] != "passed":
+        bad = [item["id"] for item in verification["sources"] if item["status"] != "passed"]
+        raise ValueError("公开来源校验失败，拒绝扫描：" + ", ".join(bad))
+    registry = validate_source_registry(read_json(registry_path))
+    totals = {
+        "documents": len(registry["sources"]),
+        "inspected": 0,
+        "failed": 0,
+        "paragraphs": 0,
+        "tables": 0,
+        "drawing_objects": 0,
+        "native_charts": 0,
+        "native_math_paragraphs": 0,
+        "statistical_expressions": 0,
+        "preflight_issues": 0,
+    }
+    documents = []
+    for source in registry["sources"]:
+        path = corpus_dir / source["local_filename"]
+        before = engine.digest(path)
+        item = {
+            "id": source["id"],
+            "title": source["title"],
+            "local_filename": source["local_filename"],
+            "source_sha256": before,
+            "status": "failed",
+        }
+        try:
+            draft = workflow.prepare(path, profile)
+            if engine.digest(path) != before:
+                raise RuntimeError("只读结构扫描意外改变了原稿。")
+            review = draft.get("_review", {})
+            objects = review.get("object_summary", {})
+            preflight = review.get("preflight_summary", {})
+            item.update(
+                status="passed",
+                paragraphs=len(review.get("paragraphs", [])),
+                tables=objects.get("top_level_tables", 0),
+                drawing_objects=objects.get("inline_drawings", 0) + objects.get("floating_drawings", 0),
+                native_charts=objects.get("native_charts", 0),
+                native_math_paragraphs=objects.get("native_math_paragraphs", 0),
+                statistical_expressions=objects.get("statistical_expressions", 0),
+                preflight_issue_count=preflight.get("issue_count", 0),
+            )
+            totals["inspected"] += 1
+            for key in (
+                "paragraphs", "tables", "drawing_objects", "native_charts",
+                "native_math_paragraphs", "statistical_expressions",
+            ):
+                totals[key] += item[key]
+            totals["preflight_issues"] += item["preflight_issue_count"]
+        except Exception as exc:
+            if path.is_file() and engine.digest(path) != before:
+                item["source_changed"] = True
+            item["error"] = f"{type(exc).__name__}: {exc}"
+            totals["failed"] += 1
+        documents.append(item)
+    report = {
+        "schema_version": SOURCE_REGISTRY_SCHEMA_VERSION,
+        "formatter_version": engine.VERSION,
+        "created_at": utc_now(),
+        "profile": profile,
+        "registry": str(registry_path),
+        "registry_sha256": engine.digest(registry_path),
+        "corpus_dir": str(corpus_dir),
+        "source_verification": verification["status"],
+        "status": "passed" if totals["failed"] == 0 else "failed",
+        "summary": totals,
+        "documents": documents,
+        "limitation": (
+            "Read-only ingestion and structure inspection only; this does not certify completed APA formatting "
+            "or page-by-page visual review."
+        ),
+    }
+    write_new_json(output_dir / "corpus-inspection.json", report)
+    write_new_text(output_dir / "corpus-inspection.md", corpus_inspection_markdown(report))
+    return report
+
+
 def resolve_case_paths(manifest_path, case):
     base = Path(manifest_path).resolve().parent
 
@@ -801,6 +927,11 @@ def main(argv=None):
     verify = commands.add_parser("verify-sources", help="核对本地公开测试文档与来源登记的大小和哈希")
     verify.add_argument("registry", type=Path)
     verify.add_argument("--corpus-dir", type=Path, required=True)
+    inspect = commands.add_parser("inspect-sources", help="校验并只读扫描全部公开 Word 测试文档")
+    inspect.add_argument("registry", type=Path)
+    inspect.add_argument("--corpus-dir", type=Path, required=True)
+    inspect.add_argument("--profile", choices=("student", "professional"), required=True)
+    inspect.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "generate":
@@ -824,6 +955,10 @@ def main(argv=None):
         if args.command == "verify-sources":
             result = verify_public_sources(args.registry, args.corpus_dir)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["status"] == "passed" else 1
+        if args.command == "inspect-sources":
+            result = inspect_public_sources(args.registry, args.corpus_dir, args.profile, args.output_dir)
+            print(corpus_inspection_markdown(result))
             return 0 if result["status"] == "passed" else 1
         run_dir = args.run_dir.expanduser().resolve()
         results = read_json(run_dir / "benchmark-results.json")

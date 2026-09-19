@@ -57,6 +57,14 @@ After download, verify that every local file matches the reviewed registry entry
 python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus
 ```
 
+Run a read-only structure inspection across the whole registered corpus and write an aggregate-only report:
+
+```sh
+python3 tools/apa7_benchmark.py inspect-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus --profile professional --output-dir benchmark/private/corpus-inspection
+```
+
+The output contains counts and status, not manuscript text or copies of the source documents. A passed corpus inspection proves only that each exact registered file was safely ingested and analyzed; it does not replace reviewed paragraph roles, formatter preservation gates, rendering, or page-by-page QA.
+
 A checksum mismatch is a different test document and must not silently replace the held-out case. Public availability does not remove the need for license review, attribution, privacy screening, or a fresh page-by-page QA record.
 
 ## Turn a failure into a permanent regression

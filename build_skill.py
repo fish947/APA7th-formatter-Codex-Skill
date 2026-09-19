@@ -12,6 +12,7 @@ def build(archive=None):
     skill = root / "skills" / "apa7-word-formatter"
     sources = {
         "apa7_format.py": root / "apa7_format.py",
+        "apa7_results.py": root / "apa7_results.py",
         "apa7_statistics.py": root / "apa7_statistics.py",
         "apa7_visuals.py": root / "apa7_visuals.py",
         "apa7_workflow.py": root / "apa7_workflow.py",

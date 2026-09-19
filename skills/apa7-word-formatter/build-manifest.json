@@ -1,11 +1,12 @@
 {
-  "version": "0.13.0",
+  "version": "0.14.0",
   "engine_sha256": {
-    "scripts/apa7_format.py": "a8938062bb8b84ccb9d7694bbdb1be1da6e1cd1f21723b05e931b8defae74b3d",
+    "scripts/apa7_format.py": "2390b8f3b9dd21066b4a65a76dabe20495d62c5507cacab2adc56b5795573e71",
+    "scripts/apa7_results.py": "f4f07e742d52e77431709c0c80b6631d4fb0c34ac54d36335ebb4728e0cead02",
     "scripts/apa7_statistics.py": "f9864b00aaa3ae2165f87134213b54c653b826d0da817c444d4fd9a660900442",
     "scripts/apa7_visuals.py": "04cdc85bbed305648992f07705a98de99c9274f3a682d0c6a162b8f46b0abc1f",
     "scripts/apa7_workflow.py": "afd0f997cdec26d6faf13edcdab8cf194a56f211c19b9cdc63ffd65f707bc0d4",
-    "scripts/apa7_benchmark.py": "55c86262e1b894ce44866f600a3c14fa5c2c890d25edbb2f6da7ce15dbee938b",
-    "scripts/requirements.txt": "1892adaddc14fe30bc84ff688281363de84eefb5ab1636f3e195a485c0279336"
+    "scripts/apa7_benchmark.py": "229386ca19979a59c7daf5e389eef18678c6b04e7c2b327340dc8a8f53b69719",
+    "scripts/requirements.txt": "cad269f5ffedfd347403f4520d50e19cfe89a44efc29ac605e4bfdb9f76ef5b2"
   }
 }

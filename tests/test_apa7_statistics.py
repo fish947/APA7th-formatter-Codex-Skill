@@ -128,7 +128,7 @@ class StatisticalReportingTests(unittest.TestCase):
             Document(formatted).paragraphs[1].text,
             "The difference was t(28) = 2.41, p = .023, d = 0.45, 95% CI [0.10, 0.80].",
         )
-        self.assertEqual(report["version"], "0.13.0")
+        self.assertEqual(report["version"], "0.14.0")
         self.assertFalse(report["statistical_reporting"]["data_values_changed"])
         self.assertTrue(any(source["title"] == "Numbers and Statistics Guide" for source in report["feedback"]["apa_sources"]))
 

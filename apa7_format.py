@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.13.0.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.14.0.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -46,7 +46,7 @@ try:
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -233,6 +233,18 @@ def descendant_count(element, *names) -> int:
 
 def has_descendant(element, *names) -> bool:
     return descendant_count(element, *names) > 0
+
+
+def has_page_boundary(element) -> bool:
+    """Detect a page/section break on python-docx or raw lxml elements."""
+    if element is None:
+        return False
+    for node in element.iter():
+        if node.tag == qn("w:sectPr"):
+            return True
+        if node.tag == qn("w:br") and node.get(qn("w:type")) == "page":
+            return True
+    return False
 
 
 def descendant_text(element, name="w:t") -> str:
@@ -1467,6 +1479,13 @@ class Formatter:
         # Formatting copy: explicit replacement is optional; unknown existing content
         # remains untouched by default. Never silently erase a logo or running text.
         replace = bool(self.config.get("replace_headers", False))
+        # python-docx creates explicit default/first/even header parts when the
+        # three variants below are accessed.  LibreOffice can otherwise render
+        # a stale even-page layout even though all three OOXML parts contain the
+        # same APA header.  Make the intended odd/even variants active and keep
+        # their content identical so page numbers stay at the upper right in
+        # both Word and LibreOffice renders.
+        self.doc.settings.odd_and_even_pages_header_footer = True
         seen = set()
         previous_width = None
         for n, section in enumerate(self.doc.sections, 1):
@@ -1585,7 +1604,7 @@ class Formatter:
                 if role in {"section", "appendix"} and text.casefold() != "author note":
                     # Avoid an extra blank page after an existing explicit page break.
                     previous = p._p.getprevious()
-                    already_breaks = previous is not None and bool(previous.xpath(".//w:br[@w:type='page'] | ./w:pPr/w:sectPr"))
+                    already_breaks = has_page_boundary(previous)
                     if not already_breaks:
                         p.paragraph_format.page_break_before = True
             elif role in {"heading2", "heading3"}:
@@ -2157,6 +2176,8 @@ def verify_saved_format(doc, formatter):
                    f"已重新打开并确认 {len(APA7_PARAGRAPH_STYLES)} 个段落样式和 {len(APA7_CHARACTER_STYLES)} 个同行标题样式。", "paragraph")
 
     missing_page, missing_head = [], []
+    if not doc.settings.odd_and_even_pages_header_footer:
+        failures.append("奇偶页页眉变体未激活；不同渲染器可能错误使用旧的偶数页页眉。")
     seen = set()
     for section_number, section in enumerate(doc.sections, 1):
         for label, container in (("default", section.header), ("first", section.first_page_header),

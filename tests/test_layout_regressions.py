@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
@@ -30,6 +30,41 @@ class LayoutRegressionTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), original)
         self.assertEqual(report["preservation"], "passed")
         return Document(output), report
+
+    def test_raw_previous_sibling_page_boundary_does_not_require_xpath_namespaces(self):
+        document = Document()
+        previous = document.add_paragraph()
+        previous.add_run().add_break(WD_BREAK.PAGE)
+        heading = document.add_paragraph("References")
+        self.assertTrue(apa.has_page_boundary(heading._p.getprevious()))
+        plain = document.add_paragraph("Plain")
+        self.assertFalse(apa.has_page_boundary(plain._p.getprevious()))
+
+    def test_even_page_header_variant_is_active_and_matches_professional_header(self):
+        document = Document()
+        document.add_paragraph("A Professional Paper")
+        section = document.sections[0]
+        section.even_page_header.paragraphs[0].text = "2"
+        source = self.root / "professional-source.docx"
+        document.save(source)
+
+        output, report = apa.format_file(
+            source,
+            output=self.root / "professional-formatted.docx",
+            profile="professional",
+            running_head="ACTIVE EVEN HEADER",
+        )
+        result = Document(output)
+        self.assertEqual(report["preservation"], "passed")
+        self.assertTrue(result.settings.odd_and_even_pages_header_footer)
+        for header in (
+            result.sections[0].header,
+            result.sections[0].first_page_header,
+            result.sections[0].even_page_header,
+        ):
+            self.assertIn("ACTIVE EVEN HEADER", header.paragraphs[0].text)
+            instructions = " ".join(header._element.xpath(".//w:instrText/text()"))
+            self.assertIn("PAGE", instructions)
 
     def test_title_overrides_inherited_blue_border_with_direct_nil(self):
         document = Document()

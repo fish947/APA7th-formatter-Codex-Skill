@@ -120,6 +120,61 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["sources"][0]["status"], "mismatch")
 
+    def test_public_corpus_inspection_is_read_only_repeatable_and_aggregate_only(self):
+        corpus = self.root / "corpus"
+        corpus.mkdir()
+        sources = []
+        original_hashes = {}
+        for number in (1, 2):
+            document = corpus / f"paper-{number}.docx"
+            doc = Document()
+            doc.add_heading(f"Synthetic Paper {number}", 0)
+            doc.add_paragraph("Results")
+            doc.add_paragraph(f"The synthetic result was t({number + 10}) = 2.10, p = .041.")
+            if number == 2:
+                table = doc.add_table(rows=2, cols=2)
+                table.cell(0, 0).text = "Condition"
+                table.cell(0, 1).text = "M"
+                table.cell(1, 0).text = "Example"
+                table.cell(1, 1).text = "4.20"
+            doc.save(document)
+            data = document.read_bytes()
+            original_hashes[document.name] = hashlib.sha256(data).hexdigest()
+            sources.append({
+                "id": f"public_paper_{number}",
+                "title": f"Synthetic Paper {number}",
+                "landing_page": f"https://example.org/record/{number}",
+                "download_url": f"https://example.org/paper-{number}.docx",
+                "license": "CC-BY-4.0",
+                "license_url": "https://creativecommons.org/licenses/by/4.0/",
+                "local_filename": document.name,
+                "size_bytes": len(data),
+                "md5": hashlib.md5(data).hexdigest(),
+                "sha256": original_hashes[document.name],
+                "intended_use": "Synthetic corpus inspection test",
+            })
+        registry_path = benchmark.write_new_json(
+            self.root / "public-sources.json", {"schema_version": 1, "sources": sources}
+        )
+        output_dir = self.root / "inspection"
+
+        result = benchmark.inspect_public_sources(registry_path, corpus, "professional", output_dir)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["summary"]["documents"], 2)
+        self.assertEqual(result["summary"]["inspected"], 2)
+        self.assertEqual(result["summary"]["tables"], 1)
+        self.assertGreaterEqual(result["summary"]["statistical_expressions"], 2)
+        self.assertTrue((output_dir / "corpus-inspection.json").is_file())
+        self.assertTrue((output_dir / "corpus-inspection.md").is_file())
+        self.assertFalse(any(output_dir.rglob("*.docx")))
+        self.assertFalse("text" in result["documents"][0])
+        for document in corpus.glob("*.docx"):
+            self.assertEqual(hashlib.sha256(document.read_bytes()).hexdigest(), original_hashes[document.name])
+
+        with self.assertRaises(ValueError):
+            benchmark.inspect_public_sources(registry_path, corpus, "professional", output_dir)
+
     def test_visual_case_cannot_pass_until_fresh_page_review_is_recorded(self):
         manifest = benchmark.generate_synthetic_suite(self.root / "fixtures")
         value = benchmark.read_json(manifest)
