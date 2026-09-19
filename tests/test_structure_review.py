@@ -7,6 +7,8 @@ import tempfile
 import unittest
 
 from docx import Document
+from docx.oxml.ns import qn
+from lxml import etree
 
 import apa7_format as apa
 
@@ -36,6 +38,26 @@ class StructureReviewTests(unittest.TestCase):
         self.assertEqual(draft["_review"]["paragraphs"][3]["inferred_role"], "heading1")
         self.assertEqual(draft["_review"]["paragraphs"][4]["text"], self.doc.paragraphs[4].text)
         self.assertEqual(list(self.root.iterdir()), [self.source])
+
+    def test_prepare_handles_raw_ooxml_containers_from_third_party_generators(self):
+        doc = Document()
+        paragraph = doc.add_paragraph("A caption-like paragraph")
+        container = etree.Element(qn("w:sdt"))
+        content = etree.SubElement(container, qn("w:sdtContent"))
+        nested_paragraph = etree.SubElement(content, qn("w:p"))
+        run = etree.SubElement(nested_paragraph, qn("w:r"))
+        drawing = etree.SubElement(run, qn("w:drawing"))
+        etree.SubElement(drawing, qn("wp:inline"))
+        paragraph._p.addnext(container)
+        source = self.root / "third-party.docx"
+        doc.save(source)
+
+        draft = apa.prepare_config(source)
+
+        self.assertEqual(draft["_review"]["object_summary"]["inline_drawings"], 1)
+        unsupported = [item for item in draft["_review"]["body_order"]
+                       if item["kind"] == "unsupported_container"]
+        self.assertEqual(unsupported, [{"kind": "unsupported_container", "tag": "sdt", "text": ""}])
 
     def test_config_hash_rejects_changed_original_before_creating_outputs(self):
         config = apa.prepare_config(self.source)

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "description": "Openly licensed real DOCX sources used for private, held-out compatibility testing. The documents are intentionally not bundled in this repository.",
+  "sources": [
+    {
+      "id": "public_schwa_density",
+      "title": "Schwa Density as a Phonological Stylistic Classifier: Primary Stylistic, Secondary Modality — A Four-Corpus Pre-Registered Replication",
+      "landing_page": "https://github.com/kylegtownsend-collab/schwa-density-spgc",
+      "download_url": "https://raw.githubusercontent.com/kylegtownsend-collab/schwa-density-spgc/main/paper.docx",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "local_filename": "schwa_density.docx",
+      "size_bytes": 525310,
+      "md5": "574ffe0a09b3e607a528974e356f2c85",
+      "sha256": "a6e7d345943775b10581fefc8084d1b3ce355648c2000c8467d7b82c8b7da09a",
+      "intended_use": "Professional-manuscript regression with tables, raster figures, native equations, citations, references, captions, and page-by-page review.",
+      "local_status": "full_benchmark_and_visual_review_completed",
+      "distribution": "not_bundled"
+    },
+    {
+      "id": "public_cahf",
+      "title": "Constraint and Access in Human Functioning: A Testable Control Architecture of Neuroceptive State and Behavioral Output",
+      "landing_page": "https://zenodo.org/records/20354780",
+      "download_url": "https://zenodo.org/api/records/20354780/files/1.%20Constraint%20and%20Access%20in%20Human%20Functioning%20(CAHF).docx/content",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "local_filename": "cahf.docx",
+      "size_bytes": 244284,
+      "md5": "e009f000e94c1ccfebef58a92a072740",
+      "sha256": "b3c7e02994e696ed9746838225b898cd01d7f1fe6e2b718e8c6c37dbfb1bfe65",
+      "intended_use": "Large-document structure inspection and reference/statistics preflight stress test.",
+      "local_status": "inspection_completed",
+      "distribution": "not_bundled"
+    },
+    {
+      "id": "public_neuromorphic",
+      "title": "Neuromorphic Mimicry Attacks: Exploiting Brain-Inspired Computing for Covert Cyber Intrusions",
+      "landing_page": "https://zenodo.org/records/16889037",
+      "download_url": "https://zenodo.org/api/records/16889037/files/Neuromorphic_Mimicry_Attacks_IEEE_Format%20(1).docx/content",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "local_filename": "neuromorphic_mimicry.docx",
+      "size_bytes": 15999,
+      "md5": "526cdf25fac01f9b5a69429061731b5c",
+      "sha256": "ebfc8520ff7dc86af60ebc045d80926c2016e1f6847345f2ef51a83c879f25a5",
+      "intended_use": "Sectionless third-party DOCX regression, IEEE-to-APA structure review, duplicate-reference detection, and page-by-page rendering.",
+      "local_status": "full_benchmark_and_visual_review_completed",
+      "distribution": "not_bundled"
+    },
+    {
+      "id": "public_ipr_report",
+      "title": "Intellectual Property Rights (IPR)",
+      "landing_page": "https://zenodo.org/records/15043936",
+      "download_url": "https://zenodo.org/api/records/15043936/files/D6.4%20Intellectual%20Property%20Rights%20(IPR)%20v1.0.docx/content",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "local_filename": "ipr_report.docx",
+      "size_bytes": 340020,
+      "md5": "5d4df7ee66e1b42766c30cd6768f432d",
+      "sha256": "7bf4a407fcb6a02f84cefcf614cb2e21830a5e586900218bb6b787ab5e499bd0",
+      "intended_use": "Non-APA Word compatibility case with tables, inline and floating drawings, and caption-object checks.",
+      "local_status": "inspection_completed",
+      "distribution": "not_bundled"
+    }
+  ]
+}

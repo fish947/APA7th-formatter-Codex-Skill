@@ -2,7 +2,7 @@
 
 > AI understands the paper. Python formats it reliably. You receive one new Word document.
 
-Version 0.11.0 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
+Version 0.13.0 · Student papers · Professional manuscripts · Statistics · Equations · Tables · Figures · References
 
 [中文](#中文介绍) · [English](#english-introduction)
 
@@ -29,64 +29,65 @@ apa7-word-formatter/
 ├── build_skill.py               自动同步可安装 Skill
 ├── requirements.txt             Python 依赖
 ├── tests/                       全部自动测试
+├── benchmark/public-sources.json 公开测试来源、许可与哈希登记（不含论文原文）
 ├── tools/
+│   ├── apa7_benchmark.py         可重复的论文基准与质量门槛
 │   └── qa_demo.py               生成合成文档做视觉测试
 ├── skills/apa7-word-formatter/  可直接安装的 Skill
 └── .github/workflows/tests.yml  GitHub 自动测试
 ```
 
-根目录的四个 `apa7_*.py` 是唯一维护来源。`skills/.../scripts/` 是构建生成的安装副本，不需要手动修改；运行 `python3 build_skill.py` 会同步脚本并更新版本与完整性哈希。
+根目录的四个 `apa7_*.py` 和 `tools/apa7_benchmark.py` 是唯一维护来源。`skills/.../scripts/` 是构建生成的安装副本，不需要手动修改；运行 `python3 build_skill.py` 会同步脚本并更新版本与完整性哈希。
 
 ### 这个 Skill 能做什么
 
-使用时只需先确认 `student`（学生论文）或 `professional`（专业／投稿论文）。默认流程是：**AI 识别文档结构 → Python 执行排版 → 保存后重新核验 → 逐页检查 → 交付一个新 DOCX 和简短反馈**。
+一句话来说：**把一篇现有的 Word 论文整理成 APA 7 格式，并把不能安全自动修改的问题告诉你。**
+
+开始前只需选择 `student`（学生论文）或 `professional`（专业／投稿论文）。AI 先读懂论文各部分，Python 再稳定地修改格式。完成后会得到一个新的 Word 文件，原稿不会被覆盖。
 
 #### 默认一键完成
 
-| 功能 | 自动处理的内容 |
+| 功能 | 用简单的话说 |
 | --- | --- |
-| 原稿保护 | 不覆盖源文件；不改变研究内容或统计数值；检查文字、超链接、域代码、Zotero／EndNote 引用、公式、图片、图表和嵌入资源是否保留 |
-| 页面设置 | 四边 1 英寸页边距、APA 允许的字体、双倍行距、段前段后间距和页码 |
-| 学生／专业模式 | 按所选模式处理标题页和页眉；专业模式使用作者提供的 running head |
-| 标题页与前置页检查 | 按学生／专业模式核对标题页候选信息、正文首页重复标题、Abstract 和 Keywords 的基本关系；不会补写姓名、课程或作者注 |
-| 文档层级 | 根据上下文识别标题页、摘要、关键词、正文、一级至五级标题、块引用、参考文献、图表说明和附录 |
-| 正文与参考文献 | 设置对齐、首行缩进、块引用缩进、参考文献悬挂缩进和标题层级格式 |
-| DOI／URL 超链接 | 将已识别参考文献中已有的完整 `http://`、`https://` 和 `https://doi.org/` 文字设为可点击 Word 链接；显示文字不变，不搜索或编造缺失 DOI |
-| 参考文献质量 | 离线检查重复条目、重复 DOI、明显的字母排序异常，以及同作者同年文献的 `2024a/2024b` 后缀；不自动改写书目信息 |
-| 统计数据汇报 | 识别 *p*、*t*、*F*、*M*、*SD*、效应量等表达；在数值不变的前提下规范统计符号、运算符空格和前导零 |
-| 统计完整性提醒 | 提示 `p = .000`、异常精度、可能缺少自由度、精确 *p* 值、效应量或置信区间；不会自动计算或补写数据 |
-| 公式 | 识别 Word 原生公式和纯文本公式候选；规范已确认独立公式的段落缩进和间距，保留公式内容并检查编号、标点和页面位置 |
-| 表格 | 对简单 Word 数据表应用 APA 风格横线并去除竖线；复杂、合并或嵌套表格会保留并提示复核 |
-| 图片与图表 | 识别位图、SVG／EMF／WMF、原生 Word 图表和 Word 表格；过宽图片等比例缩小，不拉伸、不伪造矢量图 |
-| 图表／公式编号 | 检查重复编号、跳号、顺序异常、正文提及但对象不存在，以及有编号但正文未明确提及；不自动重新编号 |
-| 图表与说明配对 | 检查表格／图形附近是否有匹配的编号和独立标题，识别孤立说明和多个图形共用说明的情况；不会移动对象 |
-| 引文检查 | 提示可能缺少对应参考文献的作者—年份引文，以及可能未在正文出现的文献条目；不会自动改写文献内容 |
-| 一次完整预检 | 把标题页、引用、参考文献、统计、公式、图表和编号检查汇总成一份简洁结果，避免分散运行多个检查 |
-| 成品核验 | 重新打开 DOCX，检查核心格式是否真正保存，并逐页查看分页、遮挡、溢出和图表位置 |
-| 简短反馈 | 只说明改了什么、APA 来源、改了原稿哪里，以及还需要作者确认什么 |
+| 保护原稿 | 永远另存一个新文件，不覆盖原稿；论文文字、数据、公式、图片和文献管理器内容会受到保护 |
+| 学生版与专业版 | 按你选择的论文类型处理标题页、页眉和页码；不会凭空编写姓名、学校、课程或作者信息 |
+| 页面基本格式 | 调整页边距、字体、双倍行距、段落间距和页码等常见 APA 7 格式 |
+| 识别论文结构 | 分清标题页、摘要、关键词、正文标题、普通正文、长引用、参考文献、附录和图表说明 |
+| 正文与标题 | 调整正文缩进、对齐方式和五级标题格式，让整篇论文的层级更统一 |
+| 参考文献 | 设置悬挂缩进，并提醒重复文献、明显的顺序问题和同作者同年份标记问题；不会擅自改写文献信息 |
+| DOI 和网页链接 | 把参考文献中已经写完整的网址变成可点击链接；不会上网猜测或补写缺失的 DOI |
+| 统计数据 | 识别 *p*、*t*、*F*、*M*、*SD*、效应量等常见写法，在不改变数字的情况下统一符号和空格 |
+| 统计问题提醒 | 提醒可能错误的 `p = .000`、小数位数，以及可能缺少的自由度、效应量或置信区间；不会编造或重新计算结果 |
+| 公式 | 保留 Word 公式，识别可能的纯文字公式，并检查独立公式的排版、编号和位置；不会改写公式内容 |
+| 表格 | 自动整理普通数据表的横线、竖线和文字格式；复杂表格会保持原样并提醒检查 |
+| 图片和图表 | 识别图片、Word 图表和矢量图；过宽图片会按比例缩小，不会拉伸，也不会把普通图片假装成矢量图 |
+| 图、表和公式编号 | 提醒重复编号、跳号、顺序错误，以及正文提到但文档里找不到的图表或公式；不会擅自重新编号 |
+| 图表标题与正文引用 | 检查图表旁边是否有编号和标题，也会提醒正文引用与参考文献之间可能不对应的地方 |
+| 成品检查 | 保存后重新打开 Word 文件，并逐页检查分页、遮挡、文字溢出和图表位置 |
+| 简短结果说明 | 最后只告诉你：改了什么、依据哪些 APA 来源、改了哪些位置、还有什么需要自己确认 |
 
-#### AI 会判断，但不会擅自猜测
+#### 需要 AI 帮忙判断的内容
 
-| 判断内容 | 处理方式 |
+| 内容 | AI 会怎么做 |
 | --- | --- |
-| 段落是什么 | AI 结合文字、前后文、Word 样式、对象顺序和页面外观判断，而不是看到粗体就当成标题 |
-| 表格是否适合自动处理 | 简单数据表自动排版；复杂表格保留原状并提醒人工检查 |
-| 图表属于哪种对象 | 先识别格式和数据是否完整，再决定保留、缩放、提取或重绘 |
-| 统计报告是否完整 | AI 结合检验类型判断自由度、*p* 值、效应量和置信区间是否需要补充；Python 不会猜测缺失结果 |
-| 公式如何处理 | AI 区分行内公式、独立公式和普通文字；不确定时保留，不自动转换或重编号 |
-| 不确定的内容 | 保留原文和对象，不强行修改，并写入“还需审核” |
+| 这段话是什么 | 根据内容和上下文判断它是标题、正文、引用、参考文献还是说明，而不是只看字体是否加粗 |
+| 表格能不能自动改 | 普通数据表可以自动处理；合并单元格很多、结构特殊的表格会保留并提醒你查看 |
+| 图片是什么用途 | 判断它是论文图、图表、截图还是装饰图片，再决定是否缩放、提取或保留 |
+| 统计报告是否完整 | 根据统计方法提醒可能缺少的内容，但不会猜测不存在的数据 |
+| 公式属于哪一类 | 区分行内公式、单独一行的公式和普通文字；不确定时保持原样 |
+| 无法确定的内容 | 不强行修改，保留原文，并在最后的“还要审核”中直接告诉你 |
 
 #### 可选的额外功能
 
-| 功能 | 什么时候使用 | 默认状态 |
+| 功能 | 适合什么时候用 | 默认状态 |
 | --- | --- | --- |
-| 矢量图导出 | 需要单独取得原始 SVG／EMF／WMF，或把数据完整的简单柱形图、折线图、散点图重绘为 SVG | 关闭 |
-| 继续写作样式 | 排版后还要在成品里新增正文、标题、参考文献、图表说明或块引用时使用 | 关闭 |
-| 保存 HTML 反馈 | 需要把简短反馈另外保存成可打开的网页文件时使用 | 关闭 |
-| 只检查不修改 | 想先看文档结构、风险和可处理对象，不立即生成排版副本时使用 | 按需 |
-| 更换 APA 允许字体 | 学校、导师或期刊指定其他 APA 可接受字体时使用 | 按需 |
+| 导出矢量图 | 想单独取出原有矢量图，或把数据完整的简单柱形图、折线图和散点图另存为 SVG | 关闭 |
+| 继续写作样式 | 排版后还要继续写论文，想在 Word 中直接选择已经设好的正文、标题或参考文献样式 | 关闭 |
+| 保存网页版说明 | 想把修改说明另外保存成一个可打开的网页文件 | 关闭 |
+| 只检查不修改 | 想先知道论文有什么格式问题，不马上生成排版成品 | 按需 |
+| 更换字体 | 学校、导师或期刊指定了另一种 APA 允许的字体 | 按需 |
 
-“继续写作样式”不是最终排版必需功能。它只是给 Word 增加 `APA7 Body`、`APA7 Heading 1`、`APA7 Reference` 等可重复选择的样式，方便用户在已经排好的副本里继续新增内容。如果论文已经写完，这项功能没有必要开启，因此从 v0.7 起默认关闭，也不会让 Word 的样式列表变得杂乱。
+“继续写作样式”不是最终排版必需功能。它的作用很简单：如果你还要继续写论文，可以在 Word 里直接选择已经设置好的正文、标题和参考文献格式。如果论文已经写完，就不用开启。
 
 格式规则来自 APA 官方网站，包括 [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format)、[学生论文设置指南](https://www.apa.org/ed/precollege/psn/2020/09/apa-style-student-papers)、[DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls)、[Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf)、[APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures)、[Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings)、[Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables)、[Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures)、[Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list)、[Citing Works With the Same Author and Date](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/same-year-author) 和 [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date)。运行 `python3 apa7_format.py --sources` 可以查看项目保存的官方原文摘录和直接链接。
 
@@ -98,7 +99,7 @@ apa7-word-formatter/
 
 图、表和公式的一致性检查同样只做安全提示。它能识别 `Tables 1–3`、`Figure A1` 和 `Equation (2)` 等明确写法，但不会自动改编号或破坏 Word 交叉引用域；图片是论文图还是校徽等装饰对象，仍由 AI 结合页面判断。
 
-v0.11 会把图表说明与实际对象按正文顺序配对，并把标题页、引用、参考文献、统计、公式和图表检查合并为一次预检。配对只用于发现风险，不会移动图表，也不会把校徽等装饰图片强行当作论文图。
+v0.13 增加公开真实文档来源登记和哈希核验，并加强第三方 Word 文件兼容性。项目只保存来源、许可和校验值，不把测试论文原文提交到 GitHub。真实论文发现的问题会被缩小成不含原文的合成测试，成为永久回归测试。
 
 APA 官方原文包括：“Alphabetize references according to the first word of the reference”；“When multiple references have an identical author (or authors) and publication year, include a lowercase letter after the year”；“Number figures in the order in which they are mentioned in your paper”；“Report exact p values to two or three decimals”；“Number all displayed equations consecutively”。完整上下文和例外见上面的官方链接。
 
@@ -180,8 +181,28 @@ python3 apa7_format.py "/path/to/paper.docx" --profile student --add-styles
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 tools/apa7_benchmark.py generate benchmark/generated/smoke
+python3 tools/apa7_benchmark.py run benchmark/generated/smoke/cases.json --output-dir benchmark/runs/smoke
 python3 build_skill.py
 ```
+
+#### 5. 大量论文测试与迭代
+
+基准不会因为“成功生成了 Word”就判定通过。原稿、文字、数值、公式、引用域或媒体意外变化会直接失败；要求视觉检查的案例，在全部页面完成复核之前只会显示“待审核”。
+
+真实论文使用 `prepare-case` 建立私有案例，原文不会被复制到仓库：
+
+```sh
+python3 tools/apa7_benchmark.py prepare-case "/private/paper.docx" --id case_001 --profile student --output-dir benchmark/private/case_001
+```
+
+公开测试样本的下载地址、开放许可、文件大小和校验值登记在 `benchmark/public-sources.json`。论文文件仍放在被 Git 忽略的 `benchmark/private/` 中。下载后可核对文件是否与登记版本完全一致：
+
+```sh
+python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus
+```
+
+发现问题后，先制作不含私人内容的最小合成文档和失败测试，再修改代码。这样同一问题以后不会悄悄回来。详细流程见 Skill 中的 `references/benchmarking.md`。
 
 ### 使用边界
 
@@ -217,64 +238,65 @@ apa7-word-formatter/
 ├── build_skill.py               Synchronizes the installable Skill
 ├── requirements.txt             Python dependencies
 ├── tests/                       Automated regression tests
+├── benchmark/public-sources.json Public source, license, and checksum registry; no papers
 ├── tools/
+│   ├── apa7_benchmark.py         Repeatable corpus benchmark and quality gate
 │   └── qa_demo.py               Synthetic visual-QA fixture generator
 ├── skills/apa7-word-formatter/  Installable Skill package
 └── .github/workflows/tests.yml  GitHub test workflow
 ```
 
-The four root `apa7_*.py` files are the only maintained code source. Files under `skills/.../scripts/` are generated installation copies. Run `python3 build_skill.py` to synchronize them and refresh the version and integrity hashes.
+The four root `apa7_*.py` files and `tools/apa7_benchmark.py` are the maintained code sources. Files under `skills/.../scripts/` are generated installation copies. Run `python3 build_skill.py` to synchronize them and refresh the version and integrity hashes.
 
 ### What the Skill Can Do
 
-The user first confirms `student` or `professional`. The default workflow is then: **AI reads the structure → Python applies the formatting → the saved file is reopened and verified → every page is reviewed → one new DOCX and concise feedback are returned**.
+In simple terms, it **formats an existing Word paper for APA 7 and tells you which issues still need human review**.
+
+First choose `student` or `professional`. The AI identifies the parts of the paper, and Python applies the formatting consistently. You receive one new Word file; the original is never overwritten.
 
 #### Automatic by Default
 
-| Feature | What it does automatically |
+| Feature | In plain language |
 | --- | --- |
-| Source protection | Never overwrites the source or changes research meaning or numeric results; checks that text, links, fields, Zotero/EndNote citations, equations, visuals, charts, and embedded resources remain present |
-| Page setup | Applies 1-inch margins, an APA-supported font, double spacing, paragraph spacing, and page numbers |
-| Student/professional mode | Handles the title page and headers for the selected mode; professional mode uses the author's running head |
-| Front-matter checks | Reviews title-page candidates, the repeated title at the start of the text, and the basic relationship between Abstract and Keywords; never invents names, course details, or author notes |
-| Document hierarchy | Uses context to identify the title page, abstract, keywords, body, Levels 1–5 headings, block quotations, references, captions, notes, and appendices |
-| Body and references | Applies alignment, first-line indents, block-quotation indents, hanging reference indents, and heading formatting |
-| DOI/URL hyperlinks | Makes complete `http://`, `https://`, and `https://doi.org/` text in identified references clickable in Word while preserving displayed text; never searches for or invents a missing DOI |
-| Reference quality | Checks for duplicate entries, duplicate DOIs, clear alphabetical-order problems, and missing or inconsistent `2024a/2024b` suffixes for the same authors and year; never rewrites bibliographic facts |
-| Statistical reporting | Recognizes expressions such as *p*, *t*, *F*, *M*, *SD*, and effect sizes; normalizes symbols, operator spacing, and leading zeros only when the numeric value remains unchanged |
-| Reporting reminders | Flags `p = .000`, questionable precision, and possibly missing degrees of freedom, exact *p* values, effect sizes, or confidence intervals; never calculates or invents results |
-| Equations | Identifies native Word math and plain-text formula candidates; formats the paragraph layout of confirmed display equations while preserving equation content and reviewing numbering, punctuation, and placement |
-| Tables | Formats simple editable Word data tables with APA-style horizontal rules and no vertical rules; preserves complex, merged, or nested tables for review |
-| Figures and charts | Distinguishes raster images, SVG/EMF/WMF, native Word charts, and Word tables; proportionally scales oversized images without stretching or fake vector conversion |
-| Number and callout checks | Flags duplicate, skipped, or out-of-order table, figure, and equation numbers; also checks explicit body callouts against identified labels without renumbering anything |
-| Caption-object pairing | Checks whether tables and drawing objects have nearby matching numbers and separate titles; flags orphan caption parts and possible multi-panel figures without moving objects |
-| Citation checks | Flags likely author–year citations without a matching reference and references without an obvious in-text citation; never edits bibliography content automatically |
-| Unified preflight | Summarizes front matter, citations, references, statistics, equations, visuals, and numbering in one compact review instead of separate runs |
-| Saved-result verification | Reopens the DOCX to confirm that core formatting was saved, then reviews each page for overflow, obstruction, pagination, and visual placement |
-| Concise feedback | Reports only what changed, the APA sources, the affected locations, and what still needs author review |
+| Protects the original | Always saves a new file instead of overwriting the original. It protects the paper's wording, numbers, equations, images, and reference-manager content |
+| Student and professional modes | Formats the title page, header, and page numbers for the selected paper type. It never invents names, institutions, course details, or author information |
+| Basic page formatting | Applies common APA 7 settings such as margins, an allowed font, double spacing, paragraph spacing, and page numbers |
+| Understands paper sections | Distinguishes the title page, abstract, keywords, headings, body text, long quotations, references, appendices, and figure or table notes |
+| Formats body text and headings | Adjusts paragraph indents, alignment, and the five APA heading levels so the paper has a consistent structure |
+| Checks references | Applies hanging indents and flags duplicate entries, obvious ordering problems, and same-author/same-year labels without rewriting source details |
+| Makes DOI and web links clickable | Turns complete URLs already written in the reference list into Word hyperlinks. It does not search for or guess a missing DOI |
+| Formats statistical results | Recognizes common symbols such as *p*, *t*, *F*, *M*, and *SD*, then fixes safe spacing and symbol formatting without changing any number |
+| Flags missing statistical details | Warns about issues such as `p = .000`, unusual decimal precision, or possibly missing degrees of freedom, effect sizes, and confidence intervals. It never invents or recalculates results |
+| Preserves equations | Keeps native Word equations, identifies likely plain-text equations, and checks the layout, numbering, and placement of display equations without rewriting their content |
+| Formats tables | Cleans up ordinary data tables with APA-style rules and text formatting. Complex tables are preserved and marked for review |
+| Handles figures and charts | Identifies images, Word charts, and vector graphics. Oversized images are scaled proportionally and are never stretched or falsely labeled as vector graphics |
+| Checks numbering | Flags duplicate, skipped, or out-of-order table, figure, and equation numbers, plus items mentioned in the text but not found in the paper. It never renumbers content on its own |
+| Checks captions and citations | Looks for matching figure/table numbers and titles, and flags likely mismatches between in-text citations and the reference list |
+| Reviews the finished file | Reopens the saved Word document and checks every page for bad page breaks, overlap, clipped text, and misplaced figures or tables |
+| Gives a short report | Tells you only what changed, which APA sources were used, where the changes were made, and what still needs your review |
 
-#### AI-Assisted Decisions
+#### What the AI Helps Decide
 
-| Decision | Behavior |
+| Content | What the AI does |
 | --- | --- |
-| What a paragraph represents | Uses wording, neighboring content, Word styles, object order, and page appearance; bold text alone is not treated as proof of a heading |
-| Whether a table is safe to format | Formats straightforward data tables and preserves complicated ones for human review |
-| What kind of visual an object is | Identifies the format and available data before preserving, scaling, extracting, or reconstructing it |
-| Whether a statistical report is complete | Uses the analysis type to assess degrees of freedom, *p* values, effect sizes, and confidence intervals; Python never guesses missing results |
-| How an equation should be treated | Distinguishes inline math, display equations, and ordinary text; preserves uncertain content and never converts or renumbers it automatically |
-| Ambiguous content | Preserves the original instead of silently guessing and lists it under remaining review |
+| What a paragraph means | Uses its wording and surrounding content to decide whether it is a heading, body paragraph, quotation, reference, or note instead of relying only on bold text |
+| Whether a table is safe to change | Formats ordinary data tables, but leaves heavily merged or unusual tables unchanged for review |
+| What an image is used for | Decides whether an object is a research figure, chart, screenshot, or decorative image before changing its size or exporting it |
+| Whether statistical reporting is complete | Uses the type of analysis to point out possibly missing information without guessing nonexistent results |
+| What kind of equation it is | Distinguishes inline math, display equations, and ordinary text; uncertain content remains unchanged |
+| Anything uncertain | Keeps the original content and lists the question clearly under items that still need review |
 
 #### Optional Extras
 
-| Feature | When it is useful | Default |
+| Feature | When to use it | Default |
 | --- | --- | --- |
-| Vector export | Extract original SVG/EMF/WMF or reconstruct supported simple bar, line, and scatter charts as SVG when complete data are available | Off |
-| Continued-writing styles | Add new body text, headings, references, captions, notes, or block quotations inside the formatted copy | Off |
-| Saved HTML feedback | Keep the concise feedback as a separate browser-readable file | Off |
-| Inspect without editing | Review structure, risks, and supported objects before creating a formatted copy | On request |
-| Alternate APA-supported font | Meet a university, instructor, or journal requirement for another permitted font | On request |
+| Vector export | Extract an existing vector image or save a supported simple bar, line, or scatter chart as SVG when complete chart data are available | Off |
+| Continued-writing styles | Keep writing in the formatted document and select ready-made Word styles for body text, headings, references, or captions | Off |
+| Web-page report | Save the short change report as a separate HTML file | Off |
+| Inspect without editing | See the paper's structure and likely problems before creating a formatted copy | On request |
+| Change the font | Use another APA-supported font required by a university, instructor, or journal | On request |
 
-Continued-writing styles are not required for final formatting. They only add reusable styles such as `APA7 Body`, `APA7 Heading 1`, and `APA7 Reference` to Word, so new content added later can reuse the correct formatting. If the paper is already complete, leave this option off. It is disabled by default from v0.7 to keep the Word style gallery uncluttered.
+Continued-writing styles are not required for final formatting. They only add reusable styles such as `APA7 Body`, `APA7 Heading 1`, and `APA7 Reference` to Word, so new content added later can reuse the correct formatting. If the paper is already complete, leave this option off.
 
 Formatting rules are linked to official APA pages, including [Paper Format](https://apastyle.apa.org/style-grammar-guidelines/paper-format), the [student-paper setup guide](https://www.apa.org/ed/precollege/psn/2020/09/apa-style-student-papers), [DOIs and URLs](https://apastyle.apa.org/style-grammar-guidelines/references/dois-urls), the [Numbers and Statistics Guide](https://apastyle.apa.org/instructional-aids/numbers-statistics-guide.pdf), [APA Research Transparency Standards](https://www.apa.org/pubs/journals/resources/standards-disclosures), [Headings](https://apastyle.apa.org/style-grammar-guidelines/paper-format/headings), [Table Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/tables), [Figure Setup](https://apastyle.apa.org/style-grammar-guidelines/tables-figures/figures), [Reference List Setup](https://apastyle.apa.org/style-grammar-guidelines/paper-format/reference-list), [Citing Works With the Same Author and Date](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/same-year-author), and the [Author-Date Citation System](https://apastyle.apa.org/style-grammar-guidelines/citations/basic-principles/author-date). Run `python3 apa7_format.py --sources` to view the stored short quotations and direct links.
 
@@ -286,7 +308,7 @@ The statistics and equation formatter follows a strict boundary: it may normaliz
 
 The numbering check is also review-only. It recognizes explicit forms such as `Tables 1–3`, `Figure A1`, and `Equation (2)`, but never renumbers objects or rewrites Word cross-reference fields. The AI still decides whether a drawing is a research figure or a decorative object such as a logo.
 
-Version 0.11 pairs captions with nearby objects in document order and combines front-matter, citation, reference, statistical, equation, visual, and numbering checks into one preflight. Pairing is a review aid only: it does not move objects or force decorative images to become research figures.
+Version 0.13 adds a public real-document source registry with checksum verification and improves compatibility with third-party Word packages. Only source, license, and integrity metadata are committed; the test papers remain outside Git. Each confirmed real-document defect is reduced to a fictional regression fixture.
 
 Key APA wording includes “Alphabetize references according to the first word of the reference,” “When multiple references have an identical author (or authors) and publication year, include a lowercase letter after the year,” “Number figures in the order in which they are mentioned in your paper,” “Report exact p values to two or three decimals,” and “Number all displayed equations consecutively.” Follow the official links above for the full context and exceptions.
 
@@ -368,8 +390,28 @@ Before maintenance or release, run:
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 tools/apa7_benchmark.py generate benchmark/generated/smoke
+python3 tools/apa7_benchmark.py run benchmark/generated/smoke/cases.json --output-dir benchmark/runs/smoke
 python3 build_skill.py
 ```
+
+#### 5. Test a corpus and iterate safely
+
+The benchmark does not pass a case merely because a Word file was created. Any unexpected change to the source, wording, numeric values, equations, citation fields, or media is a failure. A case that requires page review remains pending until every rendered page has a fresh review record.
+
+Create a private real-paper case without copying the manuscript into the repository:
+
+```sh
+python3 tools/apa7_benchmark.py prepare-case "/private/paper.docx" --id case_001 --profile student --output-dir benchmark/private/case_001
+```
+
+`benchmark/public-sources.json` records the download URL, open license, file size, and checksums for public held-out cases. Keep the downloaded DOCX files under the ignored `benchmark/private/` folder, then verify them with:
+
+```sh
+python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus
+```
+
+When a real paper reveals a defect, reduce it to a fictional minimal DOCX, add a failing regression test, and only then change the formatter. See `references/benchmarking.md` in the Skill package for the complete workflow.
 
 ### Important Boundaries
 

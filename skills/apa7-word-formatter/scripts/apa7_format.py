@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""APA 7 Word formatter with concise, evidence-linked feedback, v0.11.0.
+"""APA 7 Word formatter with concise, evidence-linked feedback, v0.13.0.
 
 Python >= 3.10; pip install 'python-docx>=1.2,<2'
 Run without arguments for a local file-picker GUI, or:
@@ -46,7 +46,7 @@ try:
 except ImportError:
     raise SystemExit("缺少依赖。请先运行：python3 -m pip install 'python-docx>=1.2,<2'")
 
-VERSION = "0.11.0"
+VERSION = "0.13.0"
 BASE = "https://apastyle.apa.org/style-grammar-guidelines/"
 # Short verbatim excerpts, each <=25 words per source. The linked page carries
 # the full rule and its exceptions; implementation summaries are our paraphrases.
@@ -216,6 +216,42 @@ def digest(path: Path) -> str:
 def visible_text(p) -> str:
     # Includes hyperlink/field results without invoking the destructive .text setter.
     return "".join(p._p.xpath(".//w:t/text()"))
+
+
+def descendant_count(element, *names) -> int:
+    """Count qualified descendants without relying on an element's XPath class.
+
+    Third-party DOCX generators can place ordinary lxml elements such as content
+    controls or AlternateContent containers between python-docx elements.  Their
+    ``xpath`` method does not install python-docx's namespace map, so prefixed
+    expressions can fail even when the document itself declares the prefix.
+    Iterating Clark-notation tags works for both element types.
+    """
+    tags = {qn(name) for name in names}
+    return sum(node.tag in tags for node in element.iter())
+
+
+def has_descendant(element, *names) -> bool:
+    return descendant_count(element, *names) > 0
+
+
+def descendant_text(element, name="w:t") -> str:
+    tag = qn(name)
+    return "".join(node.text or "" for node in element.iter(tag))
+
+
+def section_text_width(section):
+    """Return usable width without forcing an implicit Word paper size.
+
+    Some generators omit ``w:pgSz`` and rely on the word processor's default.
+    Keep that omission in the document, but use Letter width as a conservative
+    calculation fallback for header tabs and image fitting. The ambiguity is
+    recorded for visual review by ``Formatter.sections``.
+    """
+    page_width = section.page_width if section.page_width is not None else Inches(8.5)
+    left = section.left_margin if section.left_margin is not None else Inches(1)
+    right = section.right_margin if section.right_margin is not None else Inches(1)
+    return page_width - left - right
 
 
 def child(parent, name, attrs=None):
@@ -770,7 +806,7 @@ def numbered_object_check(doc, roles, table_roles=None):
                       identifiers=identifiers, locations=locations)
 
     data_table_count = None if table_roles is None else sum(role == "data" for role in table_roles.values())
-    drawing_count = len(doc._element.xpath(".//wp:inline | .//wp:anchor"))
+    drawing_count = descendant_count(doc._element, "wp:inline", "wp:anchor")
     displayed_equation_count = len(doc._element.xpath(".//m:oMathPara"))
     if data_table_count is not None and data_table_count > len(labels["table"]):
         issue("data_table_without_label", "table",
@@ -812,7 +848,7 @@ def caption_object_check(doc, roles, table_roles=None, cover=None):
     for element in doc._element.body:
         if element in paragraph_ids:
             index = paragraph_ids[element]
-            drawing_count = len(element.xpath(".//wp:inline | .//wp:anchor"))
+            drawing_count = descendant_count(element, "wp:inline", "wp:anchor")
             items.append({
                 "kind": "paragraph",
                 "paragraph": index + 1,
@@ -1163,10 +1199,19 @@ def _ordered_subsequence(original, updated):
 
 
 def package_payloads(path):
+    xml_parts = {"word/footnotes.xml", "word/endnotes.xml", "word/comments.xml"}
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=True)
     with ZipFile(path) as z:
-        return {n: hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()
-                if n.startswith(("word/media/", "word/embeddings/", "word/charts/", "customXml/"))
-                or n in {"word/footnotes.xml", "word/endnotes.xml", "word/comments.xml"}}
+        result = {}
+        for name in z.namelist():
+            if not (name.startswith(("word/media/", "word/embeddings/", "word/charts/", "customXml/"))
+                    or name in xml_parts):
+                continue
+            payload = z.read(name)
+            if name in xml_parts:
+                payload = etree.tostring(etree.fromstring(payload, parser), method="c14n")
+            result[name] = hashlib.sha256(payload).hexdigest()
+        return result
 
 
 class Formatter:
@@ -1249,7 +1294,9 @@ class Formatter:
             text = texts[i]
             style = p.style.name if p.style is not None else ""
             next_element = p._p.getnext()
-            followed_by_visual = next_element is not None and (next_element.tag == qn("w:tbl") or bool(next_element.xpath(".//w:drawing")))
+            followed_by_visual = next_element is not None and (
+                next_element.tag == qn("w:tbl") or has_descendant(next_element, "w:drawing")
+            )
             previous = self.paragraphs[i - 1] if i else None
             if state == "abstract" and (p.paragraph_format.page_break_before or
                     (previous is not None and previous._p.xpath(".//w:br[@w:type='page'] | ./w:pPr/w:sectPr"))):
@@ -1326,12 +1373,14 @@ class Formatter:
             j = i + 1
             if j < len(self.paragraphs) and role in {"caption_number", "appendix"} and texts[j] and self.roles[j] in {"body", "reference"}:
                 next_el = self.paragraphs[j]._p.getnext()
-                has_visual = next_el is not None and (next_el.tag == qn("w:tbl") or bool(next_el.xpath(".//w:drawing")))
+                has_visual = next_el is not None and (
+                    next_el.tag == qn("w:tbl") or has_descendant(next_el, "w:drawing")
+                )
                 if role == "appendix" or has_visual:
                     self.roles[j] = "appendix_title" if role == "appendix" else "caption_title"
             if texts[i].startswith("Note.") and i > 0:
                 prev = self.paragraphs[i]._p.getprevious()
-                if prev is not None and (prev.tag == qn("w:tbl") or bool(prev.xpath(".//w:drawing"))):
+                if prev is not None and (prev.tag == qn("w:tbl") or has_descendant(prev, "w:drawing")):
                     self.roles[i] = "note"
 
         for key, value in self.config.get("roles", {}).items():
@@ -1377,6 +1426,19 @@ class Formatter:
         self.event("review", "最终仍需在 Word 中逐页检查分页、图表位置和字体替代；本次程序运行未做视觉验收。")
 
     def sections(self):
+        if not self.doc.sections:
+            # Some third-party generators omit the final body-level ``sectPr``
+            # entirely. Word tolerates that package, but python-docx then
+            # exposes zero sections and later page-dependent work cannot
+            # resolve margins, headers, or image width. Add the missing
+            # formatting container without changing any manuscript content.
+            self.doc._body._body.get_or_add_sectPr()
+            self.event(
+                "changed",
+                "原稿没有 Word 节属性；已加入默认节以设置页边距、页眉和图片可用宽度。",
+                "margins",
+                "section1",
+            )
         for n, section in enumerate(self.doc.sections, 1):
             section.top_margin = section.bottom_margin = Inches(1)
             section.left_margin = section.right_margin = Inches(1)
@@ -1386,7 +1448,14 @@ class Formatter:
             cols = section._sectPr.find(qn("w:cols"))
             if cols is not None and int(cols.get(qn("w:num"), "1")) > 1:
                 self.event("review", "多栏版式保留；APA 投稿通常需要单栏，需按目标期刊确认。", "scope", f"section{n}")
-            if round(section.page_width.inches, 2) not in {8.5, 11.0}:
+            if section.page_width is None:
+                self.event(
+                    "review",
+                    "原稿未显式写入纸张尺寸；未强制改变纸张，页眉与图片宽度暂按 Letter 计算，需逐页核对。",
+                    "scope",
+                    f"section{n}",
+                )
+            elif round(section.page_width.inches, 2) not in {8.5, 11.0}:
                 self.event("review", "保留现有纸张尺寸；默认新建测试文档使用 Letter，学校指定 A4 时应遵循学校要求。", "scope", f"section{n}")
         self.event("applied", "各节四边页边距设为 1 英寸，保留纸张方向与尺寸。", "margins")
 
@@ -1401,7 +1470,7 @@ class Formatter:
         seen = set()
         previous_width = None
         for n, section in enumerate(self.doc.sections, 1):
-            current_width = section.page_width - section.left_margin - section.right_margin
+            current_width = section_text_width(section)
             for container in (section.header, section.first_page_header, section.even_page_header):
                 root = container._element
                 text = "".join(root.xpath(".//w:t/text()"))
@@ -1433,7 +1502,7 @@ class Formatter:
                 p._p.append(end)
                 if self.profile == "professional" and self.running_head:
                     p.add_run(self.running_head)
-                    p.paragraph_format.tab_stops.add_tab_stop(section.page_width - section.left_margin - section.right_margin, WD_TAB_ALIGNMENT.RIGHT)
+                    p.paragraph_format.tab_stops.add_tab_stop(section_text_width(section), WD_TAB_ALIGNMENT.RIGHT)
                     p.add_run("\t")
                 else:
                     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -1556,6 +1625,24 @@ class Formatter:
                 p.paragraph_format.space_before = Pt(FONTS[self.font] * 2)
             if role == "note" and i + 1 < len(self.paragraphs) and self.roles[i + 1] == "body" and not self.paragraphs[i + 1].paragraph_format.page_break_before:
                 p.paragraph_format.space_after = Pt(FONTS[self.font] * 2)
+            if role not in {"title", "title_meta", "abstract", "keywords"}:
+                previous_index = i - 1
+                while previous_index >= 0 and not visible_text(self.paragraphs[previous_index]).strip():
+                    previous_index -= 1
+                if previous_index >= 0 and self.roles[previous_index] in {"abstract", "keywords"}:
+                    boundary_exists = bool(p.paragraph_format.page_break_before)
+                    boundary_exists = boundary_exists or any(
+                        self.paragraphs[index]._p.xpath(".//w:br[@w:type='page'] | ./w:pPr/w:sectPr")
+                        for index in range(previous_index, i)
+                    )
+                    if not boundary_exists:
+                        p.paragraph_format.page_break_before = True
+                        self.event(
+                            "changed",
+                            "摘要／关键词后的论文正文从新页开始。",
+                            "paragraph",
+                            f"p{i+1}",
+                        )
             if role.startswith("heading"):
                 if p._p.xpath("./w:pPr/w:numPr") or re.match(r"^\s*(?:\d+(?:\.\d+)*|[A-Z])[.)]?\s+", text):
                     self.event("review", "标题包含自动或文字编号；需确认学校要求后取消编号。", "headings", f"p{i+1}")
@@ -1655,7 +1742,7 @@ class Formatter:
         section_idx = 0
         for p in self.paragraphs:
             section = self.doc.sections[section_idx]
-            width_by_p[p._p] = section.page_width - section.left_margin - section.right_margin
+            width_by_p[p._p] = section_text_width(section)
             if p._p.xpath("./w:pPr/w:sectPr") and section_idx + 1 < len(self.doc.sections):
                 section_idx += 1
         for i, shape in enumerate(self.doc.inline_shapes, 1):
@@ -1860,9 +1947,9 @@ def prepare_config(path, profile="student"):
               for i, t in enumerate(doc.tables, 1)]
     object_summary = {
         "top_level_tables": len(tables),
-        "inline_drawings": len(doc._element.xpath(".//wp:inline")),
-        "floating_drawings": len(doc._element.xpath(".//wp:anchor")),
-        "native_charts": len(doc._element.xpath(".//c:chart")),
+        "inline_drawings": descendant_count(doc._element, "wp:inline"),
+        "floating_drawings": descendant_count(doc._element, "wp:anchor"),
+        "native_charts": descendant_count(doc._element, "c:chart"),
         "suggested_abstract_items": sum(role in {"abstract", "keywords"} for role in formatter.roles.values()),
         "suggested_heading_items": sum(role in {"heading1", "heading2", "heading3", "heading4", "heading5"}
                                        for role in formatter.roles.values()),
@@ -1914,7 +2001,7 @@ def prepare_config(path, profile="student"):
             body_order.append({"kind": "table", "table": table_ids[element]})
         elif element.tag != qn("w:sectPr"):
             body_order.append({"kind": "unsupported_container", "tag": etree.QName(element).localname,
-                               "text": "".join(element.xpath(".//w:t/text()"))})
+                               "text": descendant_text(element)})
     if digest(source) != before:
         raise RuntimeError("读取期间原稿发生变化，请重新生成配置。")
     return {"source_sha256": before, "roles": {}, "run_in_headings": {},

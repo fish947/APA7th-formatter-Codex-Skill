@@ -51,6 +51,10 @@ Exports remain separate from the original editable Word objects. Do not automati
 
 Add `--add-styles` only when the user says they plan to continue writing in the formatted copy or explicitly requests reusable Word styles. This adds formatter-owned `APA7` styles for new body text, headings, references, captions, notes, block quotations and run-in headings. Leave it off for ordinary final-stage formatting so the Word style gallery stays uncluttered.
 
+## Benchmarking and regression maintenance
+
+When the user asks to test many papers, judge release quality, or improve this formatter after a failure, read [the benchmarking workflow](references/benchmarking.md). Use the bundled benchmark script to separate deterministic engine checks from fresh page-by-page review. Never put private manuscripts or downloaded public papers in the repository; a project may commit only a source/license/checksum registry. Reduce each confirmed failure to a fictional minimal fixture and add an automated test before changing the formatter.
+
 ## Delivery
 
 Return only the final DOCX by default. Do not leave audit files, structure JSON, trial DOCX files, rendered pages or QA files beside the paper. If the user explicitly requested vector export, include the vector folder as an additional requested artifact.

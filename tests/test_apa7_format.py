@@ -146,6 +146,20 @@ class FormatterRegressionTests(unittest.TestCase):
         self.assertEqual(set(report["feedback"]), {"summary", "changed", "apa_sources", "locations", "needs_review"})
         self.assertEqual({path.name for path in self.root.iterdir()}, {"source.docx", "formatted.docx"})
 
+    def test_comment_xml_equivalent_serialization_is_not_a_resource_change(self):
+        first = self.root / "first.docx"
+        second = self.root / "second.docx"
+        namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        with ZipFile(first, "w") as package:
+            package.writestr(
+                "word/comments.xml",
+                f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:comments xmlns:w="{namespace}"></w:comments>',
+            )
+        with ZipFile(second, "w") as package:
+            package.writestr("word/comments.xml", f'<w:comments xmlns:w="{namespace}"/>')
+
+        self.assertEqual(apa.package_payloads(first), apa.package_payloads(second))
+
     def test_second_run_does_not_duplicate_page_fields_or_body_content(self):
         doc = Document()
         doc.add_paragraph("Ordinary text with no special formatting.")
@@ -590,6 +604,42 @@ class FormatterRegressionTests(unittest.TestCase):
         self.assertTrue(after.sections[1].header.is_linked_to_previous)
         self.assertEqual(apa.package_payloads(out), media_before)
 
+    def test_implicit_page_size_uses_fallback_without_forcing_paper_size(self):
+        doc = Document()
+        doc.add_paragraph("A professional manuscript with an implicit paper size.")
+        section_properties = doc.sections[0]._sectPr
+        page_size = section_properties.find(qn("w:pgSz"))
+        if page_size is not None:
+            section_properties.remove(page_size)
+        source = self.save(doc)
+
+        out, report = self.format(
+            source,
+            name="implicit-size.docx",
+            profile="professional",
+            running_head="IMPLICIT PAPER SIZE",
+        )
+
+        self.assertIsNone(Document(out).sections[0].page_width)
+        self.assertTrue(any("未显式写入纸张尺寸" in event["message"] for event in report["events"]))
+
+    def test_document_without_section_properties_gets_a_safe_default_section(self):
+        doc = Document()
+        doc.add_paragraph("A manuscript generated without final section properties.")
+        doc.add_paragraph().add_run().add_picture(io.BytesIO(tiny_png()), width=Inches(8))
+        body = doc._body._body
+        body.remove(body.sectPr)
+        source = self.save(doc)
+        self.assertEqual(len(Document(source).sections), 0)
+
+        out, report = self.format(source, name="missing-section.docx")
+
+        after = Document(out)
+        self.assertEqual(len(after.sections), 1)
+        self.assertEqual(after.inline_shapes[0].width, Inches(6.5))
+        self.assertEqual(after.inline_shapes[0].height, Inches(6.5))
+        self.assertTrue(any("没有 Word 节属性" in event["message"] for event in report["events"]))
+
     def test_references_label_without_page_boundary_does_not_turn_body_into_title_metadata(self):
         doc = Document()
         doc.add_paragraph("A Study of Language", style="Title")
@@ -629,6 +679,30 @@ class FormatterRegressionTests(unittest.TestCase):
                 after = Document(out)
                 self.assertEqual(after.paragraphs[1].paragraph_format.first_line_indent, 0)
                 self.assertEqual(after.paragraphs[-1].paragraph_format.first_line_indent, Inches(0.5))
+
+    def test_body_after_abstract_and_keywords_starts_on_a_new_page(self):
+        doc = Document()
+        doc.add_paragraph("A Professional Manuscript")
+        doc.add_paragraph("Abstract")
+        doc.add_paragraph("This paragraph summarizes the study.")
+        doc.add_paragraph("Keywords: memory, language")
+        doc.add_paragraph("A Professional Manuscript")
+        doc.add_paragraph("This is the first body paragraph.")
+        source = self.save(doc)
+        roles = {
+            "1": "title",
+            "2": "section",
+            "3": "abstract",
+            "4": "keywords",
+            "5": "heading1",
+            "6": "body",
+        }
+
+        out, report = self.format(source, config={"roles": roles})
+
+        after = Document(out)
+        self.assertTrue(after.paragraphs[4].paragraph_format.page_break_before)
+        self.assertTrue(any("摘要／关键词后的论文正文从新页开始" in event["message"] for event in report["events"]))
 
     def test_final_note_after_table_is_classified_and_formatted_as_note(self):
         doc = Document()
