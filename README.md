@@ -202,6 +202,14 @@ python3 tools/apa7_benchmark.py prepare-case "/private/paper.docx" --id case_001
 python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus
 ```
 
+一条命令扫描整个测试库并生成汇总报告：
+
+```sh
+python3 tools/apa7_benchmark.py inspect-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus --profile professional --output-dir benchmark/private/corpus-inspection
+```
+
+当前基准库已登记并校验 **20 份 CC BY 4.0 Word 学术文档**。20 份文档都已完成只读结构扫描，共覆盖 5,532 个段落、44 个表格、173 个图形对象、65 个含原生公式的段落和 162 个统计表达。这里的“结构扫描通过”表示工具能安全读取并建立审核草稿，不表示每篇论文已经完成 APA 7 排版和逐页审核；目前有 2 份文档完成了完整排版、渲染和逐页复核。20 份适合作为第一阶段稳定性基线，后续仍应继续补充不同学校模板、语言、学科和复杂版式。
+
 发现问题后，先制作不含私人内容的最小合成文档和失败测试，再修改代码。这样同一问题以后不会悄悄回来。详细流程见 Skill 中的 `references/benchmarking.md`。
 
 ### 使用边界
@@ -410,6 +418,14 @@ python3 tools/apa7_benchmark.py prepare-case "/private/paper.docx" --id case_001
 ```sh
 python3 tools/apa7_benchmark.py verify-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus
 ```
+
+Inspect the complete corpus and create a compact aggregate report with one command:
+
+```sh
+python3 tools/apa7_benchmark.py inspect-sources benchmark/public-sources.json --corpus-dir benchmark/private/open-corpus --profile professional --output-dir benchmark/private/corpus-inspection
+```
+
+The current corpus registers and verifies **20 CC BY 4.0 scholarly Word documents**. All 20 have completed read-only structure inspection, covering 5,532 paragraphs, 44 tables, 173 drawing objects, 65 paragraphs containing native equations, and 162 statistical expressions. “Structure inspection passed” means the tool could safely read the document and prepare a review draft; it does not mean every paper has completed APA 7 formatting and page-by-page review. Two documents have completed the full format, render, and page-review cycle. Twenty documents are a useful first stability baseline, while future releases should continue adding university templates, languages, disciplines, and difficult layouts.
 
 When a real paper reveals a defect, reduce it to a fictional minimal DOCX, add a failing regression test, and only then change the formatter. See `references/benchmarking.md` in the Skill package for the complete workflow.
 
